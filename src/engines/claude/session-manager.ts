@@ -49,7 +49,7 @@ interface PersistedSession {
 
 // Sessions never expire — user can /reset manually.
 // IMPORTANT: When switching a bot's defaultWorkingDirectory, do NOT delete
-// session files (~/.metabot/<bot>/sessions-*.json, sessions.db).
+// session files (~/.metabot/<bot>/sessions-*.json).
 // Old sessions must be preserved so the user can switch back to a previous
 // project and resume context. loadFromDisk() uses the new defaultWorkingDirectory
 // from config, not from the persisted session, so old sessions don't interfere.

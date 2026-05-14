@@ -1,13 +1,19 @@
 /**
- * Cross-platform session registry: tracks sessions across Feishu, Telegram, iOS, and Web.
- * Stores lightweight message transcripts so any client can discover and continue sessions.
- * Uses SQLite for persistence.
+ * Cross-platform session registry — file-backed.
+ *
+ * Reads directly from two on-disk sources of truth:
+ *   - Claude Code Agent SDK JSONL transcripts at
+ *     ~/.claude/projects/<sanitized-cwd>/<sessionId>.jsonl
+ *   - Per-bot chatId → claudeSessionId map at
+ *     ~/.metabot[/<bot>]/sessions-<bot>.json
+ *
+ * Internally `id === chatId` — no separate UUID indirection.
+ *
+ * Based on the design from PR #243 by @uestney.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import * as crypto from 'node:crypto';
-import Database from 'better-sqlite3';
 import type { Logger } from '../utils/logger.js';
 
 export interface SessionRecord {
@@ -38,62 +44,112 @@ export interface SessionLink {
   linkedAt: number;
 }
 
-const MAX_MESSAGES_PER_SESSION = 200;
+interface MetaEntry {
+  botName: string;
+  claudeSessionId?: string;
+  workingDirectory: string;
+  title: string;
+  platform: string;
+  createdAt: number;
+  updatedAt: number;
+  lastMessagePreview?: string;
+  linkedChatIds?: SessionLink[];
+}
+
+type MetaMap = Record<string, MetaEntry>;
+
+/** Same encoder Claude Code SDK uses to derive ~/.claude/projects/<dir>. */
+function encodeWorkdir(workdir: string): string {
+  const sanitized = workdir.replace(/[^a-zA-Z0-9]/g, '-');
+  // SDK truncates + appends a hash beyond 200 chars; we don't replicate the
+  // hash (we'd need the SDK's N16). Workdirs >200 chars will see an empty
+  // message list — the warn is logged by getMessages().
+  return sanitized.length <= 200 ? sanitized : sanitized.slice(0, 200);
+}
+
+function projectTranscriptDir(workdir: string): string {
+  return path.join(os.homedir(), '.claude', 'projects', encodeWorkdir(workdir));
+}
 
 export class SessionRegistry {
-  private db: Database.Database;
+  private metaPath: string;
+  private meta: MetaMap = {};
 
   constructor(private logger: Logger) {
-    const dataDir = process.env.SESSION_STORE_DIR || path.join(os.homedir(), '.metabot');
+    const dataDir = process.env.SESSION_STORE_DIR
+      || process.env.METABOT_DATA_DIR
+      || path.join(os.homedir(), '.metabot');
     fs.mkdirSync(dataDir, { recursive: true });
-    const dbPath = path.join(dataDir, 'sessions.db');
-    this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
-    this.initSchema();
-    this.logger.info({ dbPath }, 'Session registry initialized');
+    this.metaPath = path.join(dataDir, 'sessions-meta.json');
+    this.loadMeta();
+    this.bootstrapFromSessionMaps(dataDir);
+    this.logger.info({ metaPath: this.metaPath }, 'Session registry initialized (file-backed)');
   }
 
-  private initSchema(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        bot_name TEXT NOT NULL,
-        claude_session_id TEXT,
-        working_directory TEXT NOT NULL,
-        title TEXT NOT NULL DEFAULT '',
-        platform TEXT NOT NULL,
-        chat_id TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_sessions_bot_name ON sessions(bot_name);
-      CREATE INDEX IF NOT EXISTS idx_sessions_chat_id ON sessions(chat_id);
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_chat_id_unique ON sessions(chat_id);
-      CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at DESC);
+  /**
+   * Surface existing chat sessions in the web UI by reading every
+   * `sessions-<bot>.json` map that SessionManager already persists. We only
+   * fill in entries that are not already in our meta map, so re-runs are
+   * idempotent.
+   */
+  private bootstrapFromSessionMaps(dataDir: string): void {
+    try {
+      const files = fs.readdirSync(dataDir);
+      let added = 0;
+      for (const file of files) {
+        const m = file.match(/^sessions-(.+)\.json$/);
+        if (!m || file === 'sessions-meta.json') continue;
+        const botName = m[1];
+        let map: Record<string, { sessionId?: string; workingDirectory?: string; lastUsed?: number }>;
+        try {
+          map = JSON.parse(fs.readFileSync(path.join(dataDir, file), 'utf-8'));
+        } catch {
+          continue;
+        }
+        for (const [chatId, persisted] of Object.entries(map)) {
+          if (this.meta[chatId]) continue;
+          if (!persisted.sessionId || !persisted.workingDirectory) continue;
+          const ts = persisted.lastUsed || Date.now();
+          this.meta[chatId] = {
+            botName,
+            claudeSessionId: persisted.sessionId,
+            workingDirectory: persisted.workingDirectory,
+            title: chatId.slice(0, 12),
+            platform: SessionRegistry.detectPlatform(chatId),
+            createdAt: ts,
+            updatedAt: ts,
+          };
+          added++;
+        }
+      }
+      if (added > 0) {
+        this.saveMeta();
+        this.logger.info({ added }, 'Bootstrapped sessions from existing sessions-<bot>.json maps');
+      }
+    } catch (err) {
+      this.logger.warn({ err, dataDir }, 'Bootstrap from session maps failed (non-fatal)');
+    }
+  }
 
-      CREATE TABLE IF NOT EXISTS session_links (
-        session_id TEXT NOT NULL,
-        chat_id TEXT NOT NULL,
-        platform TEXT NOT NULL,
-        linked_at INTEGER NOT NULL,
-        PRIMARY KEY (session_id, chat_id),
-        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-      );
-      CREATE INDEX IF NOT EXISTS idx_session_links_chat_id ON session_links(chat_id);
+  private loadMeta(): void {
+    try {
+      if (!fs.existsSync(this.metaPath)) return;
+      const raw = fs.readFileSync(this.metaPath, 'utf-8');
+      this.meta = JSON.parse(raw) as MetaMap;
+    } catch (err) {
+      this.logger.warn({ err, metaPath: this.metaPath }, 'Failed to load session metadata, starting fresh');
+      this.meta = {};
+    }
+  }
 
-      CREATE TABLE IF NOT EXISTS session_messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT NOT NULL,
-        role TEXT NOT NULL,
-        text TEXT NOT NULL,
-        platform TEXT NOT NULL,
-        cost_usd REAL,
-        duration_ms REAL,
-        timestamp INTEGER NOT NULL,
-        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-      );
-      CREATE INDEX IF NOT EXISTS idx_session_messages_session_id ON session_messages(session_id);
-    `);
+  private saveMeta(): void {
+    try {
+      const tmp = `${this.metaPath}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(this.meta, null, 2), 'utf-8');
+      fs.renameSync(tmp, this.metaPath);
+    } catch (err) {
+      this.logger.warn({ err, metaPath: this.metaPath }, 'Failed to persist session metadata');
+    }
   }
 
   /** Detect platform from chatId pattern. */
@@ -102,6 +158,32 @@ export class SessionRegistry {
     if (/^\d+$/.test(chatId)) return 'telegram';
     if (chatId.startsWith('ios_')) return 'ios';
     return 'web';
+  }
+
+  private resolvePrimary(chatId: string): { primaryChatId: string; entry: MetaEntry } | null {
+    const direct = this.meta[chatId];
+    if (direct) return { primaryChatId: chatId, entry: direct };
+    for (const [pid, entry] of Object.entries(this.meta)) {
+      if (entry.linkedChatIds?.some((l) => l.chatId === chatId)) {
+        return { primaryChatId: pid, entry };
+      }
+    }
+    return null;
+  }
+
+  private toRecord(chatId: string, entry: MetaEntry): SessionRecord {
+    return {
+      id: chatId,
+      botName: entry.botName,
+      claudeSessionId: entry.claudeSessionId,
+      workingDirectory: entry.workingDirectory,
+      title: entry.title,
+      platform: entry.platform,
+      chatId,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+      lastMessagePreview: entry.lastMessagePreview,
+    };
   }
 
   /**
@@ -118,152 +200,138 @@ export class SessionRegistry {
     costUsd?: number;
     durationMs?: number;
   }): string {
-    const { chatId, botName, claudeSessionId, workingDirectory, prompt, responseText, costUsd, durationMs } = opts;
+    const { chatId, botName, claudeSessionId, workingDirectory, prompt, responseText } = opts;
     const platform = SessionRegistry.detectPlatform(chatId);
     const now = Date.now();
 
-    // Check if session exists for this chatId
-    let session = this.findByChatId(chatId);
+    const resolved = this.resolvePrimary(chatId);
+    const primaryChatId = resolved?.primaryChatId ?? chatId;
+    const existing = resolved?.entry;
 
-    if (session) {
-      // Update existing session
-      const updates: string[] = ['updated_at = ?'];
-      const params: any[] = [now];
+    const preview = (responseText || prompt || '').slice(0, 200).replace(/\n/g, ' ');
 
-      if (claudeSessionId) {
-        updates.push('claude_session_id = ?');
-        params.push(claudeSessionId);
-      }
+    const entry: MetaEntry = existing
+      ? {
+          ...existing,
+          claudeSessionId: claudeSessionId || existing.claudeSessionId,
+          workingDirectory: existing.workingDirectory || workingDirectory,
+          updatedAt: now,
+          lastMessagePreview: preview || existing.lastMessagePreview,
+        }
+      : {
+          botName,
+          claudeSessionId,
+          workingDirectory,
+          title: prompt.slice(0, 60).replace(/\n/g, ' '),
+          platform,
+          createdAt: now,
+          updatedAt: now,
+          lastMessagePreview: preview,
+        };
 
-      params.push(chatId);
-      this.db.prepare(`UPDATE sessions SET ${updates.join(', ')} WHERE chat_id = ?`).run(...params);
-
-      // Also check session_links for linked chatIds
-      const linkRow = this.db.prepare('SELECT session_id FROM session_links WHERE chat_id = ?').get(chatId) as any;
-      if (linkRow) {
-        this.db.prepare('UPDATE sessions SET updated_at = ?, claude_session_id = COALESCE(?, claude_session_id) WHERE id = ?')
-          .run(now, claudeSessionId || null, linkRow.session_id);
-        session = this.getSession(linkRow.session_id)!;
-      }
-    } else {
-      // Check if this chatId is a linked chatId
-      const linkRow = this.db.prepare('SELECT session_id FROM session_links WHERE chat_id = ?').get(chatId) as any;
-      if (linkRow) {
-        this.db.prepare('UPDATE sessions SET updated_at = ?, claude_session_id = COALESCE(?, claude_session_id) WHERE id = ?')
-          .run(now, claudeSessionId || null, linkRow.session_id);
-        session = this.getSession(linkRow.session_id)!;
-      } else {
-        // Create new session
-        const id = crypto.randomUUID();
-        const title = prompt.slice(0, 60).replace(/\n/g, ' ');
-        this.db.prepare(`
-          INSERT INTO sessions (id, bot_name, claude_session_id, working_directory, title, platform, chat_id, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, botName, claudeSessionId || null, workingDirectory, title, platform, chatId, now, now);
-        session = { id, botName, claudeSessionId, workingDirectory, title, platform, chatId, createdAt: now, updatedAt: now };
-      }
-    }
-
-    // Add messages
-    if (prompt) {
-      this.addMessage(session!.id, 'user', prompt, platform);
-    }
-    if (responseText) {
-      this.addMessage(session!.id, 'assistant', responseText, platform, costUsd, durationMs);
-    }
-
-    return session!.id;
-  }
-
-  /** Add a message to a session's transcript. */
-  private addMessage(
-    sessionId: string,
-    role: 'user' | 'assistant',
-    text: string,
-    platform: string,
-    costUsd?: number,
-    durationMs?: number,
-  ): void {
-    const now = Date.now();
-    this.db.prepare(`
-      INSERT INTO session_messages (session_id, role, text, platform, cost_usd, duration_ms, timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(sessionId, role, text, platform, costUsd || null, durationMs || null, now);
-
-    // Trim old messages if over limit
-    const count = (this.db.prepare('SELECT COUNT(*) as count FROM session_messages WHERE session_id = ?').get(sessionId) as any).count;
-    if (count > MAX_MESSAGES_PER_SESSION) {
-      const excess = count - MAX_MESSAGES_PER_SESSION;
-      this.db.prepare(`
-        DELETE FROM session_messages WHERE id IN (
-          SELECT id FROM session_messages WHERE session_id = ? ORDER BY timestamp ASC LIMIT ?
-        )
-      `).run(sessionId, excess);
-    }
+    this.meta[primaryChatId] = entry;
+    this.saveMeta();
+    return primaryChatId;
   }
 
   /** List sessions for a bot, ordered by most recent first. */
   listSessions(botName: string): SessionRecord[] {
-    const rows = this.db.prepare(`
-      SELECT s.*,
-        (SELECT text FROM session_messages WHERE session_id = s.id ORDER BY timestamp DESC LIMIT 1) as last_message_preview
-      FROM sessions s
-      WHERE s.bot_name = ?
-      ORDER BY s.updated_at DESC
-      LIMIT 100
-    `).all(botName) as any[];
-
-    return rows.map(this.mapRow);
+    return Object.entries(this.meta)
+      .filter(([, e]) => e.botName === botName)
+      .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
+      .slice(0, 100)
+      .map(([cid, e]) => this.toRecord(cid, e));
   }
 
-  /** Get a single session by its registry ID. */
+  /** Get a single session by its registry ID (== chatId). */
   getSession(id: string): SessionRecord | null {
-    const row = this.db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as any;
-    return row ? this.mapRow(row) : null;
+    const resolved = this.resolvePrimary(id);
+    return resolved ? this.toRecord(resolved.primaryChatId, resolved.entry) : null;
   }
 
-  /** Find a session by its chatId (primary or linked). */
+  /** Find a session by its chatId (primary or linked) — alias of getSession. */
   findByChatId(chatId: string): SessionRecord | null {
-    // Check primary chatId
-    const row = this.db.prepare('SELECT * FROM sessions WHERE chat_id = ?').get(chatId) as any;
-    if (row) return this.mapRow(row);
-
-    // Check linked chatIds
-    const link = this.db.prepare('SELECT session_id FROM session_links WHERE chat_id = ?').get(chatId) as any;
-    if (link) return this.getSession(link.session_id);
-
-    return null;
+    return this.getSession(chatId);
   }
 
-  /** Get message history for a session. */
+  /**
+   * Get message history for a session by reading the SDK's JSONL transcript.
+   *
+   * Reads ~/.claude/projects/<encoded-cwd>/<claudeSessionId>.jsonl line by line
+   * and extracts user/assistant text. `since` is treated as a timestamp filter.
+   */
   getMessages(sessionId: string, since?: number): SessionMessage[] {
-    let sql = 'SELECT * FROM session_messages WHERE session_id = ?';
-    const params: any[] = [sessionId];
-    if (since) {
-      sql += ' AND timestamp > ?';
-      params.push(since);
-    }
-    sql += ' ORDER BY timestamp ASC LIMIT 200';
+    const session = this.getSession(sessionId);
+    if (!session?.claudeSessionId) return [];
 
-    const rows = this.db.prepare(sql).all(...params) as any[];
-    return rows.map((r) => ({
-      role: r.role as 'user' | 'assistant',
-      text: r.text,
-      timestamp: r.timestamp,
-      platform: r.platform,
-      costUsd: r.cost_usd || undefined,
-      durationMs: r.duration_ms || undefined,
-    }));
+    // Warn when workdir is too long for reliable transcript lookup
+    if (session.workingDirectory.replace(/[^a-zA-Z0-9]/g, '-').length > 200) {
+      this.logger.warn(
+        { workingDirectory: session.workingDirectory, sessionId },
+        'Working directory exceeds 200 chars after sanitization — JSONL transcript lookup may fail. Consider using a shorter project path.',
+      );
+    }
+
+    const jsonlPath = path.join(
+      projectTranscriptDir(session.workingDirectory),
+      `${session.claudeSessionId}.jsonl`,
+    );
+    if (!fs.existsSync(jsonlPath)) return [];
+
+    const messages: SessionMessage[] = [];
+    let raw: string;
+    try {
+      raw = fs.readFileSync(jsonlPath, 'utf-8');
+    } catch (err) {
+      this.logger.warn({ err, jsonlPath }, 'Failed to read JSONL transcript');
+      return [];
+    }
+
+    for (const line of raw.split('\n')) {
+      if (!line) continue;
+      let evt: any;
+      try {
+        evt = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      const ts = typeof evt.timestamp === 'string'
+        ? Date.parse(evt.timestamp)
+        : (typeof evt.timestamp === 'number' ? evt.timestamp : undefined);
+      if (since && ts && ts <= since) continue;
+
+      if (evt.type === 'user' && evt.message?.role === 'user') {
+        const text = typeof evt.message.content === 'string'
+          ? evt.message.content
+          : extractText(evt.message.content);
+        if (text) {
+          messages.push({
+            role: 'user',
+            text,
+            timestamp: ts || Date.now(),
+            platform: session.platform,
+          });
+        }
+      } else if (evt.type === 'assistant' && evt.message?.role === 'assistant') {
+        const text = extractText(evt.message.content);
+        if (text) {
+          messages.push({
+            role: 'assistant',
+            text,
+            timestamp: ts || Date.now(),
+            platform: session.platform,
+          });
+        }
+      }
+    }
+
+    return messages.slice(-200);
   }
 
   /** Get all linked chatIds for a session. */
   getLinks(sessionId: string): SessionLink[] {
-    const rows = this.db.prepare('SELECT * FROM session_links WHERE session_id = ?').all(sessionId) as any[];
-    return rows.map((r) => ({
-      chatId: r.chat_id,
-      platform: r.platform,
-      linkedAt: r.linked_at,
-    }));
+    const resolved = this.resolvePrimary(sessionId);
+    return resolved?.entry.linkedChatIds ?? [];
   }
 
   /**
@@ -271,54 +339,58 @@ export class SessionRegistry {
    * Returns the Claude session ID so the caller can set it in SessionManager.
    */
   linkChatId(sessionId: string, chatId: string, platform?: string): string | undefined {
-    const session = this.getSession(sessionId);
-    if (!session) return undefined;
+    const resolved = this.resolvePrimary(sessionId);
+    if (!resolved) return undefined;
+    const { primaryChatId, entry } = resolved;
+    if (chatId === primaryChatId) return entry.claudeSessionId;
 
     const resolvedPlatform = platform || SessionRegistry.detectPlatform(chatId);
-    const now = Date.now();
-
-    this.db.prepare(`
-      INSERT OR IGNORE INTO session_links (session_id, chat_id, platform, linked_at)
-      VALUES (?, ?, ?, ?)
-    `).run(sessionId, chatId, resolvedPlatform, now);
-
-    this.db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
-
-    this.logger.info({ sessionId, chatId, platform: resolvedPlatform }, 'Session linked to new chatId');
-    return session.claudeSessionId;
+    entry.linkedChatIds ??= [];
+    if (!entry.linkedChatIds.some((l) => l.chatId === chatId)) {
+      entry.linkedChatIds.push({ chatId, platform: resolvedPlatform, linkedAt: Date.now() });
+    }
+    entry.updatedAt = Date.now();
+    this.meta[primaryChatId] = entry;
+    this.saveMeta();
+    this.logger.info({ sessionId: primaryChatId, chatId, platform: resolvedPlatform }, 'Session linked to new chatId');
+    return entry.claudeSessionId;
   }
 
   /** Rename a session. */
   renameSession(id: string, newTitle: string): boolean {
-    const result = this.db.prepare('UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?')
-      .run(newTitle, Date.now(), id);
-    return result.changes > 0;
+    const resolved = this.resolvePrimary(id);
+    if (!resolved) return false;
+    resolved.entry.title = newTitle;
+    resolved.entry.updatedAt = Date.now();
+    this.meta[resolved.primaryChatId] = resolved.entry;
+    this.saveMeta();
+    return true;
   }
 
-  /** Delete a session and all its messages/links. */
+  /** Delete a session record. The JSONL transcript on disk is left untouched. */
   deleteSession(id: string): void {
-    this.db.prepare('DELETE FROM session_messages WHERE session_id = ?').run(id);
-    this.db.prepare('DELETE FROM session_links WHERE session_id = ?').run(id);
-    this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+    const resolved = this.resolvePrimary(id);
+    if (!resolved) return;
+    delete this.meta[resolved.primaryChatId];
+    this.saveMeta();
   }
 
   close(): void {
-    this.db.close();
+    this.saveMeta();
     this.logger.info('Session registry closed');
   }
+}
 
-  private mapRow(row: any): SessionRecord {
-    return {
-      id: row.id,
-      botName: row.bot_name,
-      claudeSessionId: row.claude_session_id || undefined,
-      workingDirectory: row.working_directory,
-      title: row.title,
-      platform: row.platform,
-      chatId: row.chat_id,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      lastMessagePreview: row.last_message_preview || undefined,
-    };
+function extractText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  const parts: string[] = [];
+  for (const block of content) {
+    if (block && typeof block === 'object') {
+      if ((block as any).type === 'text' && typeof (block as any).text === 'string') {
+        parts.push((block as any).text);
+      }
+    }
   }
+  return parts.join('\n').trim();
 }
