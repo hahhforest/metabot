@@ -459,6 +459,9 @@ export class CommandHandler {
     }
     const success = this.sessionManager.switchSession(chatId, num - 1);
     if (success) {
+      // Release persistent executor so the next message picks up the
+      // switched session's sessionId instead of the old process's.
+      try { await this.releaseExecutor(chatId, 'session-switch'); } catch {}
       const session = this.sessionManager.getSession(chatId);
       const sid = session.sessionId ? `\`${session.sessionId.slice(0, 8)}...\`` : '_new_';
       await this.sender.sendTextNotice(chatId, '✅ Switched', `Switched to session ${num} (${sid}).`, 'green');
@@ -477,6 +480,7 @@ export class CommandHandler {
     }
     const idx = this.sessionManager.switchToSessionByPrefix(chatId, prefix);
     if (idx >= 0) {
+      try { await this.releaseExecutor(chatId, 'session-switch'); } catch {}
       const session = this.sessionManager.getSession(chatId);
       const sid = session.sessionId ? `\`${session.sessionId.slice(0, 8)}...\`` : '_new_';
       await this.sender.sendTextNotice(chatId, '✅ Switched',

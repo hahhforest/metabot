@@ -331,18 +331,16 @@ export class SessionManager {
     try {
       const data: Record<string, PersistedSessionGroup> = {};
       for (const [chatId, group] of this.groups) {
-        const persistedSessions = group.sessions
-          .filter(s => s.sessionId || s.model || s.engine || s.activeGoal || s.title)
-          .map(s => this.sessionToPersisted(s));
-        if (persistedSessions.length > 0) {
-          // Recalculate activeIndex after filtering
-          const activeSession = group.sessions[group.activeIndex];
-          const newActiveIndex = persistedSessions.findIndex(
-            ps => ps.sessionId === (activeSession.sessionId || '') && ps.lastUsed === activeSession.lastUsed,
-          );
+        // Persist all sessions in a group — even new ones without a sessionId yet.
+        // The group is the unit of persistence; filtering individual sessions
+        // would lose newly-created (post-/reset) sessions before their first turn.
+        const hasContent = group.sessions.some(
+          s => s.sessionId || s.model || s.engine || s.activeGoal || s.title,
+        );
+        if (hasContent || group.sessions.length > 1) {
           data[chatId] = {
-            activeIndex: Math.max(0, newActiveIndex),
-            sessions: persistedSessions,
+            activeIndex: group.activeIndex,
+            sessions: group.sessions.map(s => this.sessionToPersisted(s)),
           };
         }
       }
