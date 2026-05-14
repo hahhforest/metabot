@@ -2325,10 +2325,13 @@ export class MessageBridge {
    */
   /** Record session and messages in the cross-platform registry. */
   private recordSession(chatId: string, prompt: string, responseText: string | undefined, claudeSessionId: string | undefined, costUsd: number | undefined, durationMs: number | undefined): void {
+    // Set session title from first user message
+    this.sessionManager.setTitle(chatId, prompt.slice(0, 50));
+
     if (!this.sessionRegistry) return;
     try {
       this.sessionRegistry.createOrUpdate({
-        chatId,
+        chatId: this.sessionManager.getVirtualChatId(chatId),
         botName: this.config.name,
         claudeSessionId,
         workingDirectory: this.sessionManager.getSession(chatId).workingDirectory,

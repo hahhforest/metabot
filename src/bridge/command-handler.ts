@@ -63,6 +63,9 @@ export class CommandHandler {
           '`/model claude`, `/model kimi`, or `/model codex` - Switch engine (resets session)',
           '`/model <name>` - Set model for current engine',
           '`/memory` - Memory document commands',
+          '`/sessions` - List all sessions in this chat',
+          '`/switch [N]` - Switch to session N (or show list to pick)',
+          '`/session <prefix>` - Switch by session ID prefix',
           '`/help` - Show this help message',
           '',
           '**Agent Commands** (pass through to the agent — Claude only):',
@@ -95,7 +98,8 @@ export class CommandHandler {
         } catch (err) {
           this.logger.warn({ err, chatId }, 'Failed to release persistent executor on /reset');
         }
-        await this.sender.sendTextNotice(chatId, '✅ Session Reset', 'Conversation cleared. Working directory preserved.', 'green');
+        await this.sender.sendTextNotice(chatId, '✅ Session Reset',
+          'New session created. Previous sessions preserved — use `/sessions` to switch back.', 'green');
         return true;
 
       case '/stop': {
@@ -159,6 +163,23 @@ export class CommandHandler {
       case '/model': {
         const args = text.slice('/model'.length).trim();
         await this.handleModelCommand(chatId, args);
+        return true;
+      }
+
+      case '/sessions': {
+        await this.handleSessionsCommand(chatId);
+        return true;
+      }
+
+      case '/switch': {
+        const args = text.slice('/switch'.length).trim();
+        await this.handleSwitchCommand(chatId, args);
+        return true;
+      }
+
+      case '/session': {
+        const args = text.slice('/session'.length).trim();
+        await this.handleSessionPrefixCommand(chatId, args);
         return true;
       }
 
@@ -407,6 +428,63 @@ export class CommandHandler {
       `Session model set to \`${newModel}\` on engine \`${activeEngine}\`. It will take effect on the next message.`,
       'green',
     );
+  }
+
+  private async handleSessionsCommand(chatId: string): Promise<void> {
+    const sessions = this.sessionManager.listSessions(chatId);
+    if (sessions.length === 0) {
+      await this.sender.sendTextNotice(chatId, '📋 Sessions', 'No sessions yet. Send a message to start one.');
+      return;
+    }
+    const lines = sessions.map(s => {
+      const marker = s.isActive ? ' ▶' : '';
+      const sid = s.sessionId ? ` \`${s.sessionId.slice(0, 8)}\`` : '';
+      const title = s.title ? ` — ${s.title}` : '';
+      const time = new Date(s.lastUsed).toLocaleString();
+      return `**${s.index + 1}.**${sid}${title} (${time})${marker}`;
+    });
+    lines.push('', 'Use `/switch N` to switch, or `/session <prefix>` to switch by session ID.');
+    await this.sender.sendTextNotice(chatId, '📋 Sessions', lines.join('\n'));
+  }
+
+  private async handleSwitchCommand(chatId: string, args: string): Promise<void> {
+    if (!args) {
+      await this.handleSessionsCommand(chatId);
+      return;
+    }
+    const num = parseInt(args, 10);
+    if (isNaN(num) || num < 1) {
+      await this.sender.sendTextNotice(chatId, '❌ Invalid', 'Usage: `/switch N` where N is the session number from `/sessions`.', 'red');
+      return;
+    }
+    const success = this.sessionManager.switchSession(chatId, num - 1);
+    if (success) {
+      const session = this.sessionManager.getSession(chatId);
+      const sid = session.sessionId ? `\`${session.sessionId.slice(0, 8)}...\`` : '_new_';
+      await this.sender.sendTextNotice(chatId, '✅ Switched', `Switched to session ${num} (${sid}).`, 'green');
+    } else {
+      const sessions = this.sessionManager.listSessions(chatId);
+      await this.sender.sendTextNotice(chatId, '❌ Invalid',
+        `Session ${num} does not exist. You have ${sessions.length} session(s). Use \`/sessions\` to list.`, 'red');
+    }
+  }
+
+  private async handleSessionPrefixCommand(chatId: string, prefix: string): Promise<void> {
+    if (!prefix || prefix.length < 8) {
+      await this.sender.sendTextNotice(chatId, '❌ Invalid',
+        'Usage: `/session <prefix>` — provide at least 8 characters of the session ID.', 'red');
+      return;
+    }
+    const idx = this.sessionManager.switchToSessionByPrefix(chatId, prefix);
+    if (idx >= 0) {
+      const session = this.sessionManager.getSession(chatId);
+      const sid = session.sessionId ? `\`${session.sessionId.slice(0, 8)}...\`` : '_new_';
+      await this.sender.sendTextNotice(chatId, '✅ Switched',
+        `Switched to session ${idx + 1} (${sid}).`, 'green');
+    } else {
+      await this.sender.sendTextNotice(chatId, '❌ Not Found',
+        `No session found matching prefix \`${prefix}\`. Use \`/sessions\` to list available sessions.`, 'red');
+    }
   }
 
   private defaultModelForEngine(engine: EngineName): string | undefined {

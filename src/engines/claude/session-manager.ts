@@ -30,6 +30,8 @@ export interface UserSession {
   activeGoal?: string;
   /** Wall-clock when the current goal was set (ms since epoch). */
   goalSetAt?: number;
+  /** First message preview, used as session title in /sessions listing. */
+  title?: string;
 }
 
 interface PersistedSession {
@@ -45,6 +47,25 @@ interface PersistedSession {
   engine?: EngineName;
   activeGoal?: string;
   goalSetAt?: number;
+  title?: string;
+}
+
+interface PersistedSessionGroup {
+  activeIndex: number;
+  sessions: PersistedSession[];
+}
+
+interface SessionGroup {
+  activeIndex: number;
+  sessions: UserSession[];
+}
+
+export interface SessionListEntry {
+  index: number;
+  title?: string;
+  sessionId?: string;
+  lastUsed: number;
+  isActive: boolean;
 }
 
 // Sessions never expire — user can /reset manually.
@@ -55,9 +76,13 @@ interface PersistedSession {
 // from config, not from the persisted session, so old sessions don't interfere.
 const SESSION_TTL_MS = Infinity;
 const MAX_SESSIONS = 10_000;
+const MAX_SESSIONS_PER_CHAT = 20;
 
 export class SessionManager {
-  private sessions = new Map<string, UserSession>();
+  // Concurrency note: MessageBridge enforces one running task per chatId
+  // via its runningTasks map, so activeIndex reads/writes within a single
+  // chatId are inherently serialized. No additional locking is needed.
+  private groups = new Map<string, SessionGroup>();
   private cleanupTimer: ReturnType<typeof setInterval>;
   private persistPath: string;
 
@@ -66,7 +91,6 @@ export class SessionManager {
     private logger: Logger,
     botName: string = 'default',
   ) {
-    // Persist sessions to a file under the project data dir
     const dataDir = process.env.SESSION_STORE_DIR
       || path.join(os.homedir(), '.metabot');
     fs.mkdirSync(dataDir, { recursive: true });
@@ -74,27 +98,46 @@ export class SessionManager {
 
     this.loadFromDisk();
 
-    // Periodic cleanup every hour
     this.cleanupTimer = setInterval(() => this.cleanupExpired(), 60 * 60 * 1000);
   }
 
-  getSession(chatId: string): UserSession {
-    let session = this.sessions.get(chatId);
-    if (!session) {
-      // Evict least-recently-used session if at capacity
-      if (this.sessions.size >= MAX_SESSIONS) {
+  private getOrCreateGroup(chatId: string): SessionGroup {
+    let group = this.groups.get(chatId);
+    if (!group) {
+      if (this.totalSessionCount() >= MAX_SESSIONS) {
         this.evictOldest();
       }
-      session = {
-        sessionId: undefined,
-        workingDirectory: this.defaultWorkingDirectory,
-        lastUsed: Date.now(),
-        cumulativeTokens: 0,
-        cumulativeCostUsd: 0,
-        cumulativeDurationMs: 0,
+      group = {
+        activeIndex: 0,
+        sessions: [this.createFreshSession()],
       };
-      this.sessions.set(chatId, session);
+      this.groups.set(chatId, group);
     }
+    return group;
+  }
+
+  private createFreshSession(): UserSession {
+    return {
+      sessionId: undefined,
+      workingDirectory: this.defaultWorkingDirectory,
+      lastUsed: Date.now(),
+      cumulativeTokens: 0,
+      cumulativeCostUsd: 0,
+      cumulativeDurationMs: 0,
+    };
+  }
+
+  private totalSessionCount(): number {
+    let count = 0;
+    for (const group of this.groups.values()) {
+      count += group.sessions.length;
+    }
+    return count;
+  }
+
+  getSession(chatId: string): UserSession {
+    const group = this.getOrCreateGroup(chatId);
+    const session = group.sessions[group.activeIndex];
     session.lastUsed = Date.now();
     return session;
   }
@@ -102,15 +145,17 @@ export class SessionManager {
   private evictOldest(): void {
     let oldestKey: string | undefined;
     let oldestTime = Infinity;
-    for (const [key, s] of this.sessions) {
-      if (s.lastUsed < oldestTime) {
-        oldestTime = s.lastUsed;
-        oldestKey = key;
+    for (const [key, group] of this.groups) {
+      for (const s of group.sessions) {
+        if (s.lastUsed < oldestTime) {
+          oldestTime = s.lastUsed;
+          oldestKey = key;
+        }
       }
     }
     if (oldestKey) {
-      this.sessions.delete(oldestKey);
-      this.logger.debug({ chatId: oldestKey }, 'Evicted oldest session (capacity limit)');
+      this.groups.delete(oldestKey);
+      this.logger.debug({ chatId: oldestKey }, 'Evicted oldest session group (capacity limit)');
     }
   }
 
@@ -176,29 +221,104 @@ export class SessionManager {
     this.saveToDisk();
   }
 
+  /**
+   * Create a new session in the group instead of clearing the old one.
+   * Old sessions are preserved and can be switched back via /sessions.
+   */
   resetSession(chatId: string): void {
-    const session = this.sessions.get(chatId);
-    if (session) {
-      session.sessionId = undefined;
-      session.sessionIdEngine = undefined;
-      session.cumulativeTokens = 0;
-      session.cumulativeCostUsd = 0;
-      session.cumulativeDurationMs = 0;
-      session.activeGoal = undefined;
-      session.goalSetAt = undefined;
-      // Keep working directory
-      this.logger.info({ chatId }, 'Session reset');
+    const group = this.groups.get(chatId);
+    if (group) {
+      const newSession = this.createFreshSession();
+      group.sessions.push(newSession);
+      group.activeIndex = group.sessions.length - 1;
+      // Trim oldest sessions if over limit (keep the active one)
+      while (group.sessions.length > MAX_SESSIONS_PER_CHAT) {
+        const removeIdx = group.activeIndex === 0 ? 1 : 0;
+        group.sessions.splice(removeIdx, 1);
+        if (group.activeIndex > removeIdx) group.activeIndex--;
+      }
+      this.logger.info({ chatId, sessionCount: group.sessions.length }, 'New session created (old sessions preserved)');
       this.saveToDisk();
     }
+  }
+
+  /** Set display title on the active session (typically first message preview). */
+  setTitle(chatId: string, title: string): void {
+    const session = this.getSession(chatId);
+    if (!session.title) {
+      session.title = title;
+      this.saveToDisk();
+    }
+  }
+
+  /** List all sessions in a chat group for /sessions display. */
+  listSessions(chatId: string): SessionListEntry[] {
+    const group = this.groups.get(chatId);
+    if (!group) return [];
+    return group.sessions.map((s, i) => ({
+      index: i,
+      title: s.title,
+      sessionId: s.sessionId,
+      lastUsed: s.lastUsed,
+      isActive: i === group.activeIndex,
+    }));
+  }
+
+  /** Switch to a different session by index. Returns false if index is out of range. */
+  switchSession(chatId: string, index: number): boolean {
+    const group = this.groups.get(chatId);
+    if (!group || index < 0 || index >= group.sessions.length) return false;
+    group.activeIndex = index;
+    group.sessions[index].lastUsed = Date.now();
+    this.logger.info({ chatId, index, sessionCount: group.sessions.length }, 'Switched active session');
+    this.saveToDisk();
+    return true;
+  }
+
+  /** Get the active session index for a chat. Returns 0 if no group exists. */
+  getActiveIndex(chatId: string): number {
+    const group = this.groups.get(chatId);
+    return group ? group.activeIndex : 0;
+  }
+
+  /**
+   * Virtual chatId for SessionRegistry isolation.
+   * Different sessions within the same chat get distinct registry entries.
+   */
+  getVirtualChatId(chatId: string): string {
+    const idx = this.getActiveIndex(chatId);
+    return idx === 0 ? chatId : `${chatId}::${idx}`;
+  }
+
+  /**
+   * Find and switch to a session by sessionId prefix (8+ chars).
+   * Returns the matched index or -1 if not found.
+   */
+  switchToSessionByPrefix(chatId: string, prefix: string): number {
+    const group = this.groups.get(chatId);
+    if (!group || prefix.length < 8) return -1;
+    const lowerPrefix = prefix.toLowerCase();
+    for (let i = 0; i < group.sessions.length; i++) {
+      const sid = group.sessions[i].sessionId;
+      if (sid && sid.toLowerCase().startsWith(lowerPrefix)) {
+        group.activeIndex = i;
+        group.sessions[i].lastUsed = Date.now();
+        this.logger.info({ chatId, index: i, prefix }, 'Switched session by prefix');
+        this.saveToDisk();
+        return i;
+      }
+    }
+    return -1;
   }
 
   private cleanupExpired(): void {
     const now = Date.now();
     let changed = false;
-    for (const [chatId, session] of this.sessions) {
-      if (now - session.lastUsed > SESSION_TTL_MS) {
-        this.sessions.delete(chatId);
-        this.logger.debug({ chatId }, 'Expired session cleaned up');
+    for (const [chatId, group] of this.groups) {
+      const allExpired = group.sessions.every(s => now - s.lastUsed > SESSION_TTL_MS);
+      if (allExpired) {
+        this.groups.delete(chatId);
+        this.logger.debug({ chatId }, 'Expired session group cleaned up');
         changed = true;
       }
     }
@@ -209,23 +329,20 @@ export class SessionManager {
 
   private saveToDisk(): void {
     try {
-      const data: Record<string, PersistedSession> = {};
-      for (const [chatId, session] of this.sessions) {
-        // Persist sessions that have a sessionId, model, engine override, or active goal
-        if (session.sessionId || session.model || session.engine || session.activeGoal) {
+      const data: Record<string, PersistedSessionGroup> = {};
+      for (const [chatId, group] of this.groups) {
+        const persistedSessions = group.sessions
+          .filter(s => s.sessionId || s.model || s.engine || s.activeGoal || s.title)
+          .map(s => this.sessionToPersisted(s));
+        if (persistedSessions.length > 0) {
+          // Recalculate activeIndex after filtering
+          const activeSession = group.sessions[group.activeIndex];
+          const newActiveIndex = persistedSessions.findIndex(
+            ps => ps.sessionId === (activeSession.sessionId || '') && ps.lastUsed === activeSession.lastUsed,
+          );
           data[chatId] = {
-            sessionId: session.sessionId || '',
-            sessionIdEngine: session.sessionIdEngine,
-            workingDirectory: session.workingDirectory,
-            lastUsed: session.lastUsed,
-            cumulativeTokens: session.cumulativeTokens,
-            cumulativeCostUsd: session.cumulativeCostUsd,
-            cumulativeDurationMs: session.cumulativeDurationMs,
-            model: session.model,
-            modelEngine: session.modelEngine,
-            engine: session.engine,
-            activeGoal: session.activeGoal,
-            goalSetAt: session.goalSetAt,
+            activeIndex: Math.max(0, newActiveIndex),
+            sessions: persistedSessions,
           };
         }
       }
@@ -235,31 +352,63 @@ export class SessionManager {
     }
   }
 
+  private sessionToPersisted(s: UserSession): PersistedSession {
+    return {
+      sessionId: s.sessionId || '',
+      sessionIdEngine: s.sessionIdEngine,
+      workingDirectory: s.workingDirectory,
+      lastUsed: s.lastUsed,
+      cumulativeTokens: s.cumulativeTokens,
+      cumulativeCostUsd: s.cumulativeCostUsd,
+      cumulativeDurationMs: s.cumulativeDurationMs,
+      model: s.model,
+      modelEngine: s.modelEngine,
+      engine: s.engine,
+      activeGoal: s.activeGoal,
+      goalSetAt: s.goalSetAt,
+      title: s.title,
+    };
+  }
+
+  private persistedToSession(p: PersistedSession): UserSession {
+    return {
+      sessionId: p.sessionId || undefined,
+      sessionIdEngine: p.sessionIdEngine,
+      workingDirectory: p.workingDirectory,
+      lastUsed: p.lastUsed,
+      cumulativeTokens: p.cumulativeTokens ?? 0,
+      cumulativeCostUsd: p.cumulativeCostUsd ?? 0,
+      cumulativeDurationMs: p.cumulativeDurationMs ?? 0,
+      model: p.model,
+      modelEngine: p.modelEngine,
+      engine: p.engine,
+      activeGoal: p.activeGoal,
+      goalSetAt: p.goalSetAt,
+      title: p.title,
+    };
+  }
+
   private loadFromDisk(): void {
     try {
       if (!fs.existsSync(this.persistPath)) return;
       const raw = fs.readFileSync(this.persistPath, 'utf-8');
-      const data: Record<string, PersistedSession> = JSON.parse(raw);
-      const now = Date.now();
+      const data: Record<string, PersistedSessionGroup | PersistedSession> = JSON.parse(raw);
       let loaded = 0;
-      for (const [chatId, persisted] of Object.entries(data)) {
-        // Skip expired sessions
-        if (now - persisted.lastUsed > SESSION_TTL_MS) continue;
-        this.sessions.set(chatId, {
-          sessionId: persisted.sessionId || undefined,
-          sessionIdEngine: persisted.sessionIdEngine,
-          workingDirectory: persisted.workingDirectory,
-          lastUsed: persisted.lastUsed,
-          cumulativeTokens: persisted.cumulativeTokens ?? 0,
-          cumulativeCostUsd: persisted.cumulativeCostUsd ?? 0,
-          cumulativeDurationMs: persisted.cumulativeDurationMs ?? 0,
-          model: persisted.model,
-          modelEngine: persisted.modelEngine,
-          engine: persisted.engine,
-          activeGoal: persisted.activeGoal,
-          goalSetAt: persisted.goalSetAt,
-        });
-        loaded++;
+      for (const [chatId, entry] of Object.entries(data)) {
+        // Detect old flat format (has 'sessionId' at top level) vs new group format (has 'sessions' array)
+        if (this.isLegacyPersistedSession(entry)) {
+          const session = this.persistedToSession(entry);
+          this.groups.set(chatId, { activeIndex: 0, sessions: [session] });
+          loaded++;
+        } else {
+          const groupData = entry as PersistedSessionGroup;
+          const sessions = groupData.sessions.map(p => this.persistedToSession(p));
+          if (sessions.length > 0) {
+            const activeIndex = Math.min(groupData.activeIndex, sessions.length - 1);
+            this.groups.set(chatId, { activeIndex: Math.max(0, activeIndex), sessions });
+            loaded++;
+          }
+        }
       }
       if (loaded > 0) {
         this.logger.info({ loaded, path: this.persistPath }, 'Restored sessions from disk');
@@ -267,6 +416,10 @@ export class SessionManager {
     } catch (err) {
       this.logger.warn({ err }, 'Failed to load sessions from disk, starting fresh');
     }
+  }
+
+  private isLegacyPersistedSession(entry: unknown): entry is PersistedSession {
+    return typeof entry === 'object' && entry !== null && 'workingDirectory' in entry && !('sessions' in entry);
   }
 
   destroy(): void {
