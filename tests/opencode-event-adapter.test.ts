@@ -41,7 +41,7 @@ describe('OpenCodeEventAdapter', () => {
     expect(completed[0]?.message?.content?.[0]?.text).toBe('hello');
   });
 
-  it('maps tools, usage, and idle into a successful terminal result', () => {
+  it('maps tools and a terminal step into a successful result without requiring idle', () => {
     const adapter = new OpenCodeEventAdapter({
       sessionId: sessionID,
       directory: '/repo',
@@ -71,14 +71,13 @@ describe('OpenCodeEventAdapter', () => {
       content: [{ type: 'text', text: '/repo' }],
       provider: { executed: true },
     }));
-    adapter.translate(event('session.next.step.ended', {
+    const result = adapter.translate(event('session.next.step.ended', {
       timestamp: 4,
       assistantMessageID: 'msg',
       finish: 'stop',
       cost: 0.12,
       tokens: { input: 100, output: 20, reasoning: 5, cache: { read: 10, write: 2 } },
     }));
-    const result = adapter.translate(event('session.idle', {}));
 
     expect(called[0]?.message?.content?.[0]).toMatchObject({
       type: 'tool_use', id: 'call-1', name: 'bash', input: { command: 'pwd' },
@@ -95,6 +94,20 @@ describe('OpenCodeEventAdapter', () => {
         },
       },
     });
+    expect(adapter.translate(event('session.idle', {}))).toEqual([]);
+  });
+
+  it('keeps a tool-call step open for the next model step', () => {
+    const adapter = new OpenCodeEventAdapter({ sessionId: sessionID, directory: '/repo' });
+    adapter.beginTurn();
+    expect(adapter.translate(event('session.next.step.ended', {
+      timestamp: 1,
+      assistantMessageID: 'msg',
+      finish: 'tool-calls',
+      cost: 0,
+      tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } },
+    }))).toEqual([]);
+    expect(adapter.isTerminal()).toBe(false);
   });
 
   it('maps native questions and permissions into correlated interactive tools', () => {
@@ -158,4 +171,3 @@ describe('OpenCodeEventAdapter', () => {
     expect(adapter.getDurableSequence()).toBe(9);
   });
 });
-

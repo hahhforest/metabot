@@ -3,7 +3,7 @@ import type { ModelRef, V2Event } from '@opencode-ai/sdk/v2/types';
 import type { BotConfigBase } from '../../config.js';
 import type { Logger } from '../../utils/logger.js';
 import { AsyncQueue } from '../../utils/async-queue.js';
-import type { ExecutionHandle, ExecutorOptions } from '../claude/executor.js';
+import type { ExecutionHandle, ExecutorOptions } from '../execution.js';
 import type { EngineEvent } from '../protocol.js';
 import { SdkOpenCodeControlPlane, type OpenCodeControlPlane } from './control-plane.js';
 import { OpenCodeEventAdapter, type OpenCodePendingInteraction } from './event-adapter.js';
@@ -61,7 +61,6 @@ export class OpenCodeExecutor {
     const cancel = async (): Promise<void> => {
       if (active.completed) return;
       aborted = true;
-      subscriptionAbort.abort();
       try {
         await active.ready;
       } catch {
@@ -78,6 +77,9 @@ export class OpenCodeExecutor {
         if (active.adapter) push(active.adapter.finish('cancelled'));
         else queue.enqueue(cancelledResult(active.sessionId));
         active.completed = true;
+        // Publish the terminal event before closing SSE. Closing first lets the
+        // stream-finalizer win the race and finish the queue without a result.
+        subscriptionAbort.abort();
         queue.finish();
       }
     };
@@ -185,7 +187,7 @@ export class OpenCodeExecutor {
       // Subscribe before admitting the prompt so no fast first event can be lost.
       const events = await controlPlane.subscribe(subscriptionAbort.signal);
       resolveReady();
-      if (subscriptionAbort.signal.aborted) return;
+      if (subscriptionAbort.signal.aborted || active.completed) return;
 
       adapter.beginTurn();
       const prompt = buildPromptWithContext(options);

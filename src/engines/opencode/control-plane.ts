@@ -166,7 +166,7 @@ export class SdkOpenCodeControlPlane implements OpenCodeControlPlane {
       this.client.v2.session.history(
         {
           sessionID: sessionId,
-          limit: 200,
+          limit: 100,
           ...(after != null ? { after } : {}),
         },
         { throwOnError: true },

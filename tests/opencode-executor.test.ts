@@ -201,6 +201,7 @@ describe('OpenCodeExecutor', () => {
   it('acknowledges abort through the native interrupt API', async () => {
     const events = new AsyncQueue<V2Event>();
     const controlPlane = buildControlPlane(events);
+    vi.mocked(controlPlane.interrupt).mockRejectedValue(new Error('session already stopping'));
     const abortController = new AbortController();
     const { executor } = buildExecutor(controlPlane);
     const handle = executor.startExecution(options(abortController));

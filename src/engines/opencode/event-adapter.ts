@@ -128,7 +128,9 @@ export class OpenCodeEventAdapter {
         this.inputTokens += event.data.tokens.input + event.data.tokens.cache.read + event.data.tokens.cache.write;
         this.outputTokens += event.data.tokens.output;
         this.reasoningTokens += event.data.tokens.reasoning;
-        return [];
+        // The real v2 stream does not guarantee a later `session.idle` event.
+        // A tool-call finish opens another step; every other finish closes the turn.
+        return isToolContinuation(event.data.finish) ? [] : this.finish('success');
       case 'session.next.step.failed':
         return this.finish('failed', formatError(event.data.error));
       case 'question.v2.asked': {
@@ -336,4 +338,8 @@ function formatError(error: unknown): string {
     }
   }
   return String(error);
+}
+
+function isToolContinuation(finish: string): boolean {
+  return finish === 'tool-calls' || finish === 'tool_calls' || finish === 'tool';
 }
