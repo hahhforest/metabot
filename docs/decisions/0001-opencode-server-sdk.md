@@ -15,8 +15,8 @@ than an independent control plane.
 
 ## Decision
 
-MetaBot will integrate OpenCode through the official headless Server API and
-`@opencode-ai/sdk`. The integration will support both:
+MetaBot will integrate OpenCode through the official headless Server API and a
+version-pinned `@opencode-ai/sdk`. The integration will support both:
 
 - managed loopback runtimes started by MetaBot; and
 - external runtimes explicitly configured by URL.
@@ -24,6 +24,12 @@ MetaBot will integrate OpenCode through the official headless Server API and
 The Server/SDK implementation is the only production transport in the initial
 release. It maps OpenCode native events into a MetaBot-owned `EngineEvent`
 protocol and declares runtime capabilities explicitly.
+
+MetaBot starts managed servers itself with `opencode serve` instead of using
+the SDK's convenience server helper. This keeps executable selection, loopback
+binding, Basic Auth, environment, stderr capture, and process ownership under
+one explicit lifecycle. The initial contract pins both runtime and SDK to
+OpenCode 1.17.14 because the v2 event and durable-history API is still evolving.
 
 ## Alternatives
 
@@ -74,4 +80,3 @@ Negative:
   logged.
 - Runtime health and version are included in diagnostics and unknown-event
   telemetry.
-

@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import type { AgentTeamConfig } from './agent-teams/team-store.js';
 import type { EngineName } from './engines/names.js';
+import { isEngineName } from './engines/names.js';
 
 export type { EngineName } from './engines/names.js';
 
@@ -131,6 +132,8 @@ export interface BotConfigBase {
   };
   /** Codex-specific overrides. Populated only when engine === 'codex'. */
   codex?: CodexBotConfig;
+  /** OpenCode Server/SDK overrides. Populated only when configured. */
+  opencode?: OpenCodeBotConfig;
   /**
    * Stage 4 — opt-in to the persistent Claude process pool. When enabled,
    * each chatId is backed by a long-lived Claude Code process (managed by
@@ -180,6 +183,31 @@ export interface CodexBotConfig {
   contextWindow?: number;
   /** Default reasoning effort for Codex CLI (`model_reasoning_effort`). */
   reasoningEffort?: CodexReasoningEffort;
+  extraArgs?: string[];
+  env?: Record<string, string>;
+}
+
+/** OpenCode Server/SDK configuration. */
+export interface OpenCodeBotConfig {
+  /** OpenCode executable used for a managed local server. */
+  executable?: string;
+  /** Explicit server URL. When set, MetaBot connects but never owns shutdown. */
+  serverUrl?: string;
+  /** Optional fixed port for a managed loopback server. An ephemeral port is used by default. */
+  port?: number;
+  /** HTTP Basic Auth username. Defaults to `opencode`. */
+  serverUsername?: string;
+  /** HTTP Basic Auth password. A random per-process password is generated for managed servers. */
+  serverPassword?: string;
+  model?: string;
+  agent?: string;
+  variant?: string;
+  /** Permission requests are shown to the user by default. */
+  permissionMode?: 'ask' | 'auto' | 'deny';
+  /** Start managed servers without external plugins. */
+  pure?: boolean;
+  /** Context window size in tokens for display when model metadata is unavailable. */
+  contextWindow?: number;
   extraArgs?: string[];
   env?: Record<string, string>;
 }
@@ -297,11 +325,15 @@ export interface CodexJsonConfig {
   env?: Record<string, string>;
 }
 
+/** OpenCode-specific overrides in bots.json. */
+export interface OpenCodeJsonConfig extends OpenCodeBotConfig {}
+
 /** Fields shared across all bot JSON entries (engine selection and engine overrides). */
 interface EngineJsonFields {
   engine?: EngineName;
   kimi?: KimiJsonConfig;
   codex?: CodexJsonConfig;
+  opencode?: OpenCodeJsonConfig;
   /** Claude turn backend: 'pty' (default) or 'sdk' (legacy opt-out). Overrides env CLAUDE_BACKEND. */
   backend?: 'sdk' | 'pty';
 }
@@ -334,6 +366,7 @@ export interface FeishuBotJsonEntry extends EngineJsonFields {
 
 function feishuBotFromJson(entry: FeishuBotJsonEntry): BotConfig {
   const codex = buildCodexConfig(entry.codex);
+  const opencode = buildOpenCodeConfig(entry.opencode);
   return {
     name: entry.name,
     ...(entry.description ? { description: entry.description } : {}),
@@ -349,6 +382,7 @@ function feishuBotFromJson(entry: FeishuBotJsonEntry): BotConfig {
     ...(entry.engine ? { engine: entry.engine } : {}),
     ...(entry.kimi ? { kimi: entry.kimi } : {}),
     ...(codex ? { codex } : {}),
+    ...(opencode ? { opencode } : {}),
     feishu: {
       appId: entry.feishuAppId,
       appSecret: entry.feishuAppSecret,
@@ -384,6 +418,7 @@ export interface TelegramBotJsonEntry extends EngineJsonFields {
 
 function telegramBotFromJson(entry: TelegramBotJsonEntry): TelegramBotConfig {
   const codex = buildCodexConfig(entry.codex);
+  const opencode = buildOpenCodeConfig(entry.opencode);
   return {
     name: entry.name,
     ...(entry.description ? { description: entry.description } : {}),
@@ -398,6 +433,7 @@ function telegramBotFromJson(entry: TelegramBotJsonEntry): TelegramBotConfig {
     ...(entry.engine ? { engine: entry.engine } : {}),
     ...(entry.kimi ? { kimi: entry.kimi } : {}),
     ...(codex ? { codex } : {}),
+    ...(opencode ? { opencode } : {}),
     telegram: {
       botToken: entry.telegramBotToken,
     },
@@ -430,6 +466,7 @@ export interface WebBotJsonEntry extends EngineJsonFields {
 
 export function webBotFromJson(entry: WebBotJsonEntry): BotConfigBase {
   const codex = buildCodexConfig(entry.codex);
+  const opencode = buildOpenCodeConfig(entry.opencode);
   return {
     name: entry.name,
     ...(entry.description ? { description: entry.description } : {}),
@@ -444,6 +481,7 @@ export function webBotFromJson(entry: WebBotJsonEntry): BotConfigBase {
     ...(entry.engine ? { engine: entry.engine } : {}),
     ...(entry.kimi ? { kimi: entry.kimi } : {}),
     ...(codex ? { codex } : {}),
+    ...(opencode ? { opencode } : {}),
     claude: buildClaudeConfig(entry),
   };
 }
@@ -470,6 +508,7 @@ export interface WechatBotJsonEntry extends EngineJsonFields {
 
 function wechatBotFromJson(entry: WechatBotJsonEntry): WechatBotConfig {
   const codex = buildCodexConfig(entry.codex);
+  const opencode = buildOpenCodeConfig(entry.opencode);
   return {
     name: entry.name,
     ...(entry.description ? { description: entry.description } : {}),
@@ -478,6 +517,7 @@ function wechatBotFromJson(entry: WechatBotJsonEntry): WechatBotConfig {
     ...(entry.engine ? { engine: entry.engine } : {}),
     ...(entry.kimi ? { kimi: entry.kimi } : {}),
     ...(codex ? { codex } : {}),
+    ...(opencode ? { opencode } : {}),
     wechat: {
       ilinkBaseUrl: entry.ilinkBaseUrl,
       botToken: entry.wechatBotToken,
@@ -530,14 +570,43 @@ function buildCodexConfig(entry?: CodexJsonConfig): BotConfigBase['codex'] | und
   return Object.keys(cfg).length > 0 ? cfg : undefined;
 }
 
+export function buildOpenCodeConfig(entry?: OpenCodeJsonConfig): BotConfigBase['opencode'] | undefined {
+  const port = process.env.OPENCODE_SERVER_PORT
+    ? Number.parseInt(process.env.OPENCODE_SERVER_PORT, 10)
+    : undefined;
+  const contextWindow = process.env.OPENCODE_CONTEXT_WINDOW
+    ? Number.parseInt(process.env.OPENCODE_CONTEXT_WINDOW, 10)
+    : undefined;
+  const permissionMode = process.env.OPENCODE_PERMISSION_MODE;
+  const cfg: BotConfigBase['opencode'] = {
+    ...(process.env.OPENCODE_EXECUTABLE_PATH ? { executable: process.env.OPENCODE_EXECUTABLE_PATH } : {}),
+    ...(process.env.OPENCODE_SERVER_URL ? { serverUrl: process.env.OPENCODE_SERVER_URL } : {}),
+    ...(Number.isFinite(port) ? { port } : {}),
+    ...(process.env.OPENCODE_SERVER_USERNAME ? { serverUsername: process.env.OPENCODE_SERVER_USERNAME } : {}),
+    ...(process.env.OPENCODE_SERVER_PASSWORD ? { serverPassword: process.env.OPENCODE_SERVER_PASSWORD } : {}),
+    ...(process.env.OPENCODE_MODEL ? { model: process.env.OPENCODE_MODEL } : {}),
+    ...(process.env.OPENCODE_AGENT ? { agent: process.env.OPENCODE_AGENT } : {}),
+    ...(process.env.OPENCODE_VARIANT ? { variant: process.env.OPENCODE_VARIANT } : {}),
+    ...(permissionMode === 'ask' || permissionMode === 'auto' || permissionMode === 'deny'
+      ? { permissionMode }
+      : {}),
+    ...(process.env.OPENCODE_PURE === 'true' ? { pure: true } : {}),
+    ...(Number.isFinite(contextWindow) ? { contextWindow } : {}),
+    ...(entry ?? {}),
+  };
+  return Object.keys(cfg).length > 0 ? cfg : undefined;
+}
+
 // --- Single-bot env var mode ---
 
 function feishuBotFromEnv(): BotConfig {
   const codex = buildCodexConfig();
+  const opencode = buildOpenCodeConfig();
   return {
     name: 'default',
     ...(process.env.METABOT_ENGINE ? { engine: process.env.METABOT_ENGINE as EngineName } : {}),
     ...(codex ? { codex } : {}),
+    ...(opencode ? { opencode } : {}),
     feishu: {
       appId: required('FEISHU_APP_ID'),
       appSecret: required('FEISHU_APP_SECRET'),
@@ -557,10 +626,12 @@ function feishuBotFromEnv(): BotConfig {
 
 function telegramBotFromEnv(): TelegramBotConfig {
   const codex = buildCodexConfig();
+  const opencode = buildOpenCodeConfig();
   return {
     name: 'telegram-default',
     ...(process.env.METABOT_ENGINE ? { engine: process.env.METABOT_ENGINE as EngineName } : {}),
     ...(codex ? { codex } : {}),
+    ...(opencode ? { opencode } : {}),
     telegram: {
       botToken: required('TELEGRAM_BOT_TOKEN'),
     },
@@ -579,10 +650,12 @@ function telegramBotFromEnv(): TelegramBotConfig {
 
 function wechatBotFromEnv(): WechatBotConfig {
   const codex = buildCodexConfig();
+  const opencode = buildOpenCodeConfig();
   return {
     name: 'wechat-default',
     ...(process.env.METABOT_ENGINE ? { engine: process.env.METABOT_ENGINE as EngineName } : {}),
     ...(codex ? { codex } : {}),
+    ...(opencode ? { opencode } : {}),
     wechat: {
       botToken: process.env.WECHAT_BOT_TOKEN || undefined,
     },
@@ -755,7 +828,7 @@ function normalizeAgentTeamConfig(team: AgentTeamConfig): AgentTeamConfig {
         .map((agent) => ({
           name: agent.name.trim(),
           ...(agent.role ? { role: agent.role } : {}),
-          ...(agent.engine === 'claude' || agent.engine === 'codex' || agent.engine === 'kimi' ? { engine: agent.engine } : {}),
+          ...(isEngineName(agent.engine) ? { engine: agent.engine } : {}),
           ...(agent.prompt ? { prompt: agent.prompt } : {}),
           ...(agent.sessionId ? { sessionId: agent.sessionId } : {}),
           ...(agent.status === 'idle' || agent.status === 'working' || agent.status === 'stopped' ? { status: agent.status } : {}),

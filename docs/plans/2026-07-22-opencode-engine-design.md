@@ -56,7 +56,7 @@ Engine registry ---- EngineDescriptor / EngineCapabilities
 OpenCodeExecutor ---- OpenCodeRuntimeManager
         |                    |
         |                    +-- external URL: connect only
-        |                    +-- managed: createOpencodeServer(), own close()
+        |                    +-- managed: spawn `opencode serve`, own close()
         v
 OpenCode SDK client
         |
@@ -71,11 +71,14 @@ OpenCode SDK client
 OpenCodeEventAdapter -> EngineEvent -> StreamProcessor -> CardState
 ```
 
-The runtime manager is shared by executors with the same normalized origin and
-working-directory context. A managed runtime owns the child server and closes
-it during MetaBot shutdown. An external runtime is never terminated by
-MetaBot. Individual chats map to individual native sessions; a server is not
-started per chat or per turn.
+The runtime manager is shared by turns from one engine instance. A managed
+runtime chooses a loopback port, generates Basic Auth credentials when the
+operator did not provide them, owns the child server, and closes it during
+MetaBot shutdown. An external runtime is never terminated by MetaBot.
+Individual chats map to individual native sessions; a server is not started per
+chat or per turn. MetaBot starts the process directly instead of using the SDK
+server helper because process executable, authentication, environment, and
+ownership must remain explicit.
 
 ## Engine Boundary
 
@@ -124,8 +127,8 @@ method, so retaining it would falsely imply renderer polymorphism.
    directory.
 2. Create a session when no OpenCode-owned session ID exists; otherwise verify
    and reuse the saved session.
-3. Subscribe to native events before submitting the prompt, recording the
-   session ID filter and turn baseline.
+3. Subscribe to the server-global native event stream before submitting the
+   prompt, recording the session ID, location filter, and durable baseline.
 4. Submit the user prompt asynchronously with the selected provider/model,
    agent, and variant.
 5. Translate only events belonging to the active session and current turn.
@@ -134,11 +137,12 @@ method, so retaining it would falsely imply renderer polymorphism.
 7. Stop the subscription and release turn-local resources without terminating
    the shared runtime.
 
-Snapshot/message retrieval is a recovery mechanism, not the primary event
-transport. On subscription interruption, the executor reconciles current
-session messages once, emits unseen completed parts, and either resumes the
-subscription or returns a structured transport error. It must never replay the
-pre-turn transcript.
+Durable session history and message retrieval are recovery mechanisms, not the
+primary event transport. The global stream carries live text and tool-input
+deltas that the durable per-session stream does not retain. On subscription
+interruption, the executor reconciles from the last durable sequence, emits
+unseen completed parts, and either resumes the global subscription or returns a
+structured transport error. It must never replay the pre-turn transcript.
 
 ## Questions and Permissions
 
@@ -177,4 +181,3 @@ than leaving a turn indefinitely busy.
 - Product tests for config, commands, API, Agent Teams, Web UI, and installer.
 - An opt-in real smoke test using the installed OpenCode runtime: create a
   session, complete a turn, resume it for a second turn, and abort a long turn.
-
