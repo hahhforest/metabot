@@ -82,7 +82,7 @@ Never store credentials, device codes, or authorization URLs in shared memory.
 
 1. Use one least-privilege service account per deployment.
 2. Give each bot only the workspace it needs.
-3. Keep Codex in `workspace-write` and Kimi in `auto` unless there is a clear
+3. Keep Codex in `workspace-write`, Kimi in `auto`, and OpenCode in `ask` unless there is a clear
    reason to broaden execution.
 4. Keep local tokens at mode `0600` and raw services on loopback.
 5. Review Core Console run, tool, and output-file activity regularly.

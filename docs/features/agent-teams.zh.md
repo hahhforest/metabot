@@ -1,6 +1,6 @@
 # Agent 团队
 
-MetaBot Agent 团队让主导 Agent 通过本地 bridge 协调一组持久化专家队友。协调模型是引擎中立的：团队可以声明 Claude、Codex 或 Kimi 队友，所有协调状态都落在 bridge 数据库里，而不是藏在单个模型会话中。实际执行仍走当前 bridge 和 session-engine 路径，因此每个配置的引擎都必须被该 bridge 运行时支持。
+MetaBot Agent 团队让主导 Agent 通过本地 bridge 协调一组持久化专家队友。协调模型是引擎中立的：团队可以声明 Claude、Codex、Kimi 或 OpenCode 队友，所有协调状态都落在 bridge 数据库里，而不是藏在单个模型会话中。实际执行仍走当前 bridge 和 session-engine 路径，因此每个配置的引擎都必须被该 bridge 运行时支持。
 
 ## 功能
 
@@ -139,7 +139,7 @@ metabot teams start <team>
 metabot teams stop <team>
 
 metabot teams agents list <team>
-metabot teams agents spawn <team> <name> [--role <role>] [--engine claude|codex|kimi] [--prompt <text>]
+metabot teams agents spawn <team> <name> [--role <role>] [--engine claude|codex|kimi|opencode] [--prompt <text>]
 metabot teams agents stop <team> <name>
 metabot teams agents delete <team> <name>
 

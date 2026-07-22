@@ -106,8 +106,8 @@ the check; retry from the official GitHub Release.
 ## Claude Code compatibility
 
 Claude is optional for existing workspaces. Run `claude login` in a standalone
-terminal and select `"engine": "claude"` for that bot. Codex and Kimi Code are
-the primary Personal Edition engines.
+terminal and select `"engine": "claude"` for that bot. Codex, Kimi Code, and
+OpenCode are the primary Personal Edition engines.
 
 If the issue remains, include the MetaBot version, operating system, selected
 engine, `metabot doctor` output with secrets removed, and the smallest relevant

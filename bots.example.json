@@ -48,6 +48,19 @@
         "approvalPolicy": "never",
         "sandbox": "workspace-write"
       }
+    },
+    {
+      "name": "project-opencode",
+      "description": "OpenCode-powered multi-provider agent",
+      "engine": "opencode",
+      "feishuAppId": "cli_opencode",
+      "feishuAppSecret": "secret5",
+      "defaultWorkingDirectory": "/home/user/project-opencode",
+      "opencode": {
+        "model": "openai/gpt-5.6",
+        "agent": "build",
+        "permissionMode": "ask"
+      }
     }
   ],
   "telegramBots": [

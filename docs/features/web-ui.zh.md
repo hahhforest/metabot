@@ -12,7 +12,7 @@ Core Console Chat 把实时执行与 Core 的持久 Conversation、Run 和多 Ag
 放在同一页面：
 
 - 流式展示 Agent 回复和当前运行状态
-- 展示 Codex、Kimi Code 和 Claude 兼容引擎的工具活动
+- 展示 Codex、Kimi Code、OpenCode 和 Claude 兼容引擎的工具活动
 - 渲染 Markdown、代码块、表格和链接
 - 在页面内回答 Agent 的交互问题
 - 停止正在执行的 Run
@@ -28,7 +28,7 @@ Core Console Chat 把实时执行与 Core 的持久 Conversation、Run 和多 Ag
   └─ packages/web-ui/（唯一 React SPA）
        └─ packages/server/（Token 鉴权、Conversation、Run、Memory、Skills、T5T）
             └─ Agent Bus Inbox
-                 └─ Bridge :9100（Codex / Kimi Code / Claude 执行）
+                 └─ Bridge :9100（Codex / Kimi Code / OpenCode / Claude 执行）
                       └─ Run 状态、工具、问题和文件事件回传 Core
 ```
 

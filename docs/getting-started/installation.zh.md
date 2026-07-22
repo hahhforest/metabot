@@ -7,7 +7,7 @@
 - 至少一个引擎和一个聊天渠道的凭证
 - Linux/macOS 才能使用完整的签名校验个人版生命周期
 
-Codex 是默认引擎，Kimi Code 是一级可选引擎；Claude Code 作为现有工作区
+Codex 是默认引擎，Kimi Code 和 OpenCode 是一级可选引擎；Claude Code 作为现有工作区
 的可选兼容引擎保留。
 
 ## 一行安装
@@ -67,6 +67,16 @@ kimi login
 
 MetaBot 使用 Kimi Code 官方 loopback Server API，与 Kimi Web UI 使用同一套
 前端协议。该路径不再支持旧 Python `kimi-cli --wire` 集成。
+
+### OpenCode 1.17.14
+
+```bash
+npm install -g opencode-ai@1.17.14
+opencode
+```
+
+第一次运行 `opencode` 时配置 Provider。随后 MetaBot 使用官方 v2 Server API
+和 SDK。CLI 必须使用该精确版本，因为 SDK 与 Server 协议按相同版本固定。
 
 ### Claude Code 兼容
 

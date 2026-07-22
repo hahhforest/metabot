@@ -12,7 +12,7 @@ Core Console Chat combines live execution with Core's durable Conversation,
 Run, and multi-Agent model:
 
 - streamed Agent responses and live run state
-- tool activity from Codex, Kimi Code, and the Claude compatibility engine
+- tool activity from Codex, Kimi Code, OpenCode, and the Claude compatibility engine
 - Markdown, code block, table, and link rendering
 - interactive Agent questions answered in the page
 - cancellation of active runs
@@ -28,7 +28,7 @@ browser :9200
   └─ packages/web-ui/ (the only React SPA)
        └─ packages/server/ (token auth, conversations, runs, Memory, Skills, T5T)
             └─ Agent Bus inbox
-                 └─ Bridge :9100 (Codex / Kimi Code / Claude execution)
+                 └─ Bridge :9100 (Codex / Kimi Code / OpenCode / Claude execution)
                       └─ run state, tools, questions, and file events back to Core
 ```
 

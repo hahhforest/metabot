@@ -2,7 +2,7 @@
 
 MetaBot 是 Node.js >= 22.19 的 TypeScript ESM monorepo。Bridge 把飞书/Lark、
 Telegram、微信和 Web 客户端接入引擎无关的消息流水线；每个 Bot 或 Chat
-可以运行 Codex、Kimi Code 或 Claude 兼容引擎。
+可以运行 Codex、Kimi Code、OpenCode 或 Claude 兼容引擎。
 
 ## 系统概览
 
@@ -15,12 +15,11 @@ Telegram、微信和 Web 客户端接入引擎无关的消息流水线；每个 
          命令 · 任务 · 会话 · 媒体
                     │
                 引擎路由
-          ┌─────────┼──────────┐
-          │         │          │
-   Codex CLI    Kimi Code    Claude Code
-   exec JSONL   本地 Server   兼容路径
-   + resume     API 0.27+     CLI / SDK
-          └─────────┼──────────┘
+   ┌──────────┬───────────┬───────────┬────────────┐
+   │Codex CLI │ Kimi Code │ OpenCode  │Claude Code │
+   │exec JSONL│Server API │v2 Server  │兼容路径     │
+   │+ resume  │0.27+      │+ SDK      │CLI / SDK   │
+   └──────────┴───────────┴───────────┴────────────┘
                     │
           共享流式/卡片事件模型
                     │
@@ -34,7 +33,10 @@ T5T · Teams · Chat      ↔     会话 · 文件 · Peers
 Codex 是默认引擎，当前使用 `codex exec --json` 和 `codex exec resume`；
 公开版尚未使用 Codex app-server 或原生执行中 steering。Kimi Code 0.27+
 使用官方 loopback Server API，提供持久 Session、原子快照、问题交互、
-工具、子 Agent、Goal 和完成状态。本版本暂不开放飞书执行中 steering。Claude 作为现有 Bot 和
+工具、子 Agent、Goal 和完成状态。本版本暂不开放飞书执行中 steering。OpenCode 1.17.14
+通过官方 v2 Server API 与固定版本 SDK 提供实时事件、持久 Session、问题、权限、steering、
+停止和子 Agent。MetaBot 默认为每个 Bot 启动一个带认证的 loopback Server；若显式配置外部
+Server，则只连接、不负责关闭。Claude 作为现有 Bot 和
 工作区的显式兼容引擎保留。
 
 ## 三大支柱
@@ -53,7 +55,7 @@ Codex 是默认引擎，当前使用 `codex exec --json` 和 `codex exec resume`
 渠道事件
   → EventHandler（解析、媒体、精确 @Bot 路由）
   → MessageBridge（命令、队列、任务/会话状态）
-  → Engine.createExecutor()（Codex、Kimi 或 Claude 兼容）
+  → Engine.createExecutor()（Codex、Kimi、OpenCode 或 Claude 兼容）
   → 原生输出转换为共享 EngineEvent/CardState 事件
   → 节流后的流式卡片或渠道回复
 ```
@@ -81,6 +83,7 @@ Bearer Token 鉴权，Bridge 渠道凭证留在 Bridge 侧。
 |---|---|---|
 | Codex | `codex exec --json` JSONL | 使用 `codex exec resume` 续接已保存会话 |
 | Kimi Code | 官方 `/api/v1` 本地 Server API | 持久 Kimi Session 和原子前端快照 |
+| OpenCode | 官方 v2 Server API + 固定版本 SDK | 持久原生 Session、全局 SSE 事件与历史恢复 |
 | Claude 兼容 | Claude CLI / Agent SDK | 现有 Claude 会话和持久 Executor 行为 |
 
 ## 核心模块
@@ -94,6 +97,7 @@ Bearer Token 鉴权，Bridge 渠道凭证留在 Bridge 侧。
 | `src/engines/codex/executor.ts` | 启动 Codex exec/resume 并转换 JSONL 事件。 |
 | `src/engines/kimi/daemon-client.ts` | 启动或连接 Kimi Code 本地 Server API。 |
 | `src/engines/kimi/executor.ts` | 驱动 Kimi Session、快照、插话、问题、Goal 和完成状态。 |
+| `src/engines/opencode/` | 管理 OpenCode Runtime 生命周期、SDK 控制面、事件转换、执行与 Session 发现。 |
 | `src/engines/claude/` | Claude 兼容 Executor、会话和流处理代码。 |
 | `src/feishu/event-handler.ts` | 飞书事件解析、媒体缓存、群模式和精确 @ 路由。 |
 | `src/telegram/` / `src/wechat/` | Telegram 和微信渠道适配器。 |

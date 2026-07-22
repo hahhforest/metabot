@@ -101,7 +101,7 @@ metabot update --package --version 1.3.0
 ## Claude Code 兼容模式
 
 Claude 仅用于已有工作区兼容。在独立终端运行 `claude login`，并为该 Bot 选择
-`"engine": "claude"`。Codex 与 Kimi Code 是个人版的主要引擎。
+`"engine": "claude"`。Codex、Kimi Code 与 OpenCode 是个人版的主要引擎。
 
 问题仍未解决时，在 GitHub Issue 中提供 MetaBot 版本、操作系统、所选引擎、
 已移除敏感信息的 `metabot doctor` 输出，以及最小相关日志片段。

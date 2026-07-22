@@ -74,7 +74,7 @@ metabot memory share <document-id> on
 
 1. 每套部署使用一个最小权限服务账号。
 2. 每个 Bot 只配置所需工作区。
-3. Codex 保持 `workspace-write`，Kimi 保持 `auto`，除非有明确理由扩大权限。
+3. Codex 保持 `workspace-write`，Kimi 保持 `auto`，OpenCode 保持 `ask`，除非有明确理由扩大权限。
 4. 本地 Token 保持 `0600`，原始服务只监听 loopback。
 5. 定期检查 Core Console 中的 Run、工具和输出文件活动。
 6. 使用 `metabot update` 通过已校验的 GitHub Release 更新。

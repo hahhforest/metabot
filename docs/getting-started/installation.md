@@ -7,7 +7,7 @@
 - Credentials for at least one engine and one chat channel
 - Linux/macOS for the complete signed-checksum personal-edition lifecycle
 
-Codex is the default engine. Kimi Code is a first-class alternative; Claude
+Codex is the default engine. Kimi Code and OpenCode are first-class alternatives; Claude
 Code is an optional compatibility engine for existing workspaces.
 
 ## One-Line Install
@@ -68,6 +68,17 @@ kimi login
 MetaBot uses Kimi Code's official loopback Server API, the same frontend
 contract used by Kimi's web UI. Legacy Python `kimi-cli --wire` integrations
 are not supported by this path.
+
+### OpenCode 1.17.14
+
+```bash
+npm install -g opencode-ai@1.17.14
+opencode
+```
+
+The first `opencode` run configures a provider. MetaBot then uses the official
+v2 Server API and SDK. The exact CLI version is required because the SDK and
+server protocol are pinned together.
 
 ### Claude Code compatibility
 

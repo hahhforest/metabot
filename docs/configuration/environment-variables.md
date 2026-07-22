@@ -9,7 +9,7 @@ values you need.
 | Variable | Default | Purpose |
 |---|---|---|
 | `BOTS_CONFIG` | — | Path to multi-bot configuration, normally `./bots.json` |
-| `METABOT_ENGINE` | `codex` | Single-bot default: `codex`, `kimi`, or compatibility `claude` |
+| `METABOT_ENGINE` | `codex` | Single-bot default: `codex`, `kimi`, `opencode`, or compatibility `claude` |
 | `API_PORT` | `9100` | Local Bridge API port |
 | `API_SECRET` | — | Bridge Bearer secret; empty keeps the API on localhost |
 | `METABOT_URL` | `http://localhost:9100` | Bridge URL used by local Bridge CLI commands |
@@ -41,6 +41,14 @@ Personal Edition.
 | `KIMI_CODE_SERVER_URL` | `http://127.0.0.1:58627` | Existing local Kimi Server; otherwise started on demand |
 | `KIMI_CODE_HOME` | `~/.kimi-code` | Kimi configuration and local token directory |
 | `KIMI_API_KEY` | login state | Optional provider key inherited by local Kimi Server |
+| `OPENCODE_EXECUTABLE_PATH` | `opencode` | OpenCode 1.17.14 executable |
+| `OPENCODE_SERVER_URL` | managed loopback server | External OpenCode Server URL |
+| `OPENCODE_SERVER_PORT` | ephemeral | Fixed port for a managed server |
+| `OPENCODE_SERVER_USERNAME` / `OPENCODE_SERVER_PASSWORD` | generated for managed mode | Basic Auth for an external or fixed server |
+| `OPENCODE_MODEL` | OpenCode default | Full `provider/model` identifier |
+| `OPENCODE_AGENT` / `OPENCODE_VARIANT` | OpenCode default | Native agent and model variant |
+| `OPENCODE_PERMISSION_MODE` | `ask` | `ask`, explicit `auto`, or `deny` |
+| `OPENCODE_PURE` | `false` | Disable external plugins for a managed server |
 | `CLAUDE_MODEL` | Claude default | Compatibility-engine model |
 | `CLAUDE_EXECUTABLE_PATH` | auto | Claude compatibility binary path |
 
@@ -86,7 +94,7 @@ The complete provider and RTC variable list remains documented inline in
 ## Proxy
 
 Standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` variables are supported.
-Include `localhost` and `127.0.0.1` in `NO_PROXY` so Core, Bridge, and local Kimi
-Server traffic stays local.
+Include `localhost` and `127.0.0.1` in `NO_PROXY` so Core, Bridge, Kimi, and
+OpenCode Server traffic stays local.
 
 Never commit a populated `.env` or `bots.json`.

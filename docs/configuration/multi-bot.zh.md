@@ -48,7 +48,7 @@
 |---|---|---|---|
 | `name` | 是 | — | 稳定的 Bot 标识 |
 | `defaultWorkingDirectory` | 是 | — | Agent 可访问的工作区 |
-| `engine` | 否 | `"codex"` | `"codex"`、`"kimi"` 或兼容引擎 `"claude"` |
+| `engine` | 否 | `"codex"` | `"codex"`、`"kimi"`、`"opencode"` 或兼容引擎 `"claude"` |
 | `model` | 否 | 引擎默认 | Session 模型覆盖 |
 | `visible` | 否 | `true` | 是否注册到 Agent Bus 供发现 |
 | `memoryPublic` | 否 | 粘性/默认策略 | 显式设置时固定 Bot 的默认 Memory 可见性 |
@@ -121,6 +121,39 @@ MetaBot 使用与 Kimi Web 前端同源的官方本地 Server API，支持持久
 
 `permissionMode` 默认是 `auto`。只有在完全可信的工作区中才应显式选择
 `yolo`；个人版不会默认开启该模式。
+
+## OpenCode 配置
+
+```json
+{
+  "engine": "opencode",
+  "opencode": {
+    "model": "openai/gpt-5.6",
+    "agent": "build",
+    "permissionMode": "ask",
+    "pure": true
+  }
+}
+```
+
+| 字段 | 默认值 | 说明 |
+|---|---|---|
+| `opencode.executable` | `PATH` 中的 `opencode` | 托管 Server 的可执行文件 |
+| `opencode.serverUrl` | 未设置 | 外部 Server 地址；MetaBot 不负责关闭 |
+| `opencode.port` | 随机 loopback 端口 | 需要时固定托管 Server 端口 |
+| `opencode.model` | OpenCode Provider 默认 | 完整 `provider/model` 标识 |
+| `opencode.agent` / `variant` | OpenCode 默认 | 原生 Agent 与模型变体覆盖 |
+| `opencode.permissionMode` | `ask` | `ask`、显式 `auto` 或 `deny` |
+| `opencode.pure` | `false` | 启动托管 Server 时禁用外部插件 |
+
+MetaBot 要求 OpenCode `1.17.14`，并把 `@opencode-ai/sdk` 固定到相同版本。
+托管模式为每个 Bot 启动一个带认证的 loopback Server；设置 `serverUrl` 后
+切换为外部管理模式。实时 SSE 是主事件源，持久 Session 历史用于恢复。
+
+```bash
+npm install -g opencode-ai@1.17.14
+opencode
+```
 
 ## Claude Code 兼容
 

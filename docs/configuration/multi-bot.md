@@ -49,7 +49,7 @@ Set `BOTS_CONFIG=./bots.json` in `.env`:
 |---|---|---|---|
 | `name` | Yes | — | Stable bot identifier |
 | `defaultWorkingDirectory` | Yes | — | Workspace available to the agent |
-| `engine` | No | `"codex"` | `"codex"`, `"kimi"`, or compatibility `"claude"` |
+| `engine` | No | `"codex"` | `"codex"`, `"kimi"`, `"opencode"`, or compatibility `"claude"` |
 | `model` | No | Engine default | Session model override |
 | `visible` | No | `true` | Register the bot for Agent Bus discovery |
 | `memoryPublic` | No | sticky/default policy | Pin the bot's default memory visibility when explicitly set |
@@ -124,6 +124,40 @@ release. The legacy Python `kimi-cli --wire --work-dir` protocol is not used.
 
 `permissionMode` defaults to `auto`. `yolo` is available only as an explicit
 opt-in for a workspace you trust; the personal edition never enables it by default.
+
+## OpenCode Options
+
+```json
+{
+  "engine": "opencode",
+  "opencode": {
+    "model": "openai/gpt-5.6",
+    "agent": "build",
+    "permissionMode": "ask",
+    "pure": true
+  }
+}
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `opencode.executable` | `opencode` from `PATH` | Executable for the managed server |
+| `opencode.serverUrl` | unset | External server URL; MetaBot never owns its shutdown |
+| `opencode.port` | ephemeral loopback port | Fixed managed-server port when required |
+| `opencode.model` | OpenCode provider default | Full `provider/model` identifier |
+| `opencode.agent` / `variant` | OpenCode default | Native agent and model-variant overrides |
+| `opencode.permissionMode` | `ask` | `ask`, explicit `auto`, or `deny` |
+| `opencode.pure` | `false` | Start the managed server without external plugins |
+
+MetaBot requires OpenCode `1.17.14` and pins `@opencode-ai/sdk` to the same
+version. The managed path starts one authenticated loopback server per bot;
+`serverUrl` switches to externally managed mode. Live SSE is the primary event
+source and durable Session history is used for recovery.
+
+```bash
+npm install -g opencode-ai@1.17.14
+opencode
+```
 
 ## Claude Code Compatibility
 

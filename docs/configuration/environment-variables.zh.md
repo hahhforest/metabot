@@ -8,7 +8,7 @@
 | 变量 | 默认值 | 作用 |
 |---|---|---|
 | `BOTS_CONFIG` | — | 多 Bot 配置路径，通常为 `./bots.json` |
-| `METABOT_ENGINE` | `codex` | 单 Bot 默认引擎：`codex`、`kimi` 或兼容 `claude` |
+| `METABOT_ENGINE` | `codex` | 单 Bot 默认引擎：`codex`、`kimi`、`opencode` 或兼容 `claude` |
 | `API_PORT` | `9100` | 本地 Bridge API 端口 |
 | `API_SECRET` | — | Bridge Bearer Secret；为空时只监听 localhost |
 | `METABOT_URL` | `http://localhost:9100` | Bridge CLI 命令使用的地址 |
@@ -39,6 +39,14 @@ MetaMemory 变量和 `8100` 端口不属于当前个人版。
 | `KIMI_CODE_SERVER_URL` | `http://127.0.0.1:58627` | 已有本地 Kimi Server；否则按需启动 |
 | `KIMI_CODE_HOME` | `~/.kimi-code` | Kimi 配置和本地 Token 目录 |
 | `KIMI_API_KEY` | 登录状态 | 本地 Kimi Server 继承的可选 Provider Key |
+| `OPENCODE_EXECUTABLE_PATH` | `opencode` | OpenCode 1.17.14 可执行文件 |
+| `OPENCODE_SERVER_URL` | 托管 loopback Server | 外部 OpenCode Server 地址 |
+| `OPENCODE_SERVER_PORT` | 随机 | 托管 Server 的固定端口 |
+| `OPENCODE_SERVER_USERNAME` / `OPENCODE_SERVER_PASSWORD` | 托管模式自动生成 | 外部或固定 Server 的 Basic Auth |
+| `OPENCODE_MODEL` | OpenCode 默认 | 完整 `provider/model` 标识 |
+| `OPENCODE_AGENT` / `OPENCODE_VARIANT` | OpenCode 默认 | 原生 Agent 与模型变体 |
+| `OPENCODE_PERMISSION_MODE` | `ask` | `ask`、显式 `auto` 或 `deny` |
+| `OPENCODE_PURE` | `false` | 托管 Server 禁用外部插件 |
 | `CLAUDE_MODEL` | Claude 默认 | 兼容引擎模型 |
 | `CLAUDE_EXECUTABLE_PATH` | 自动 | Claude 兼容二进制路径 |
 
@@ -82,6 +90,6 @@ MetaMemory 变量和 `8100` 端口不属于当前个人版。
 ## 代理
 
 支持标准 `HTTP_PROXY`、`HTTPS_PROXY` 和 `NO_PROXY`。应在 `NO_PROXY` 中包含
-`localhost` 和 `127.0.0.1`，保证 Core、Bridge 与本地 Kimi Server 流量不经过代理。
+`localhost` 和 `127.0.0.1`，保证 Core、Bridge、Kimi 与 OpenCode Server 流量不经过代理。
 
 不要提交已填写的 `.env` 或 `bots.json`。

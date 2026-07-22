@@ -2,7 +2,7 @@
 
 MetaBot is a Node.js >= 22.19 TypeScript ESM monorepo. The Bridge connects
 Feishu/Lark, Telegram, WeChat, and Web clients to an engine-neutral message
-pipeline; each bot or chat can run Codex, Kimi Code, or Claude compatibility.
+pipeline; each bot or chat can run Codex, Kimi Code, OpenCode, or Claude compatibility.
 
 ## System Overview
 
@@ -15,12 +15,11 @@ Feishu/Lark · Telegram · WeChat · Web
        commands · tasks · sessions · media
                     │
               Engine Router
-          ┌─────────┼──────────┐
-          │         │          │
-   Codex CLI    Kimi Code    Claude Code
-   exec JSONL   local Server  compatibility
-   + resume     API 0.27+     CLI / SDK
-          └─────────┼──────────┘
+   ┌──────────┬───────────┬───────────┬────────────┐
+   │Codex CLI │ Kimi Code │ OpenCode  │Claude Code │
+   │exec JSONL│Server API │v2 Server  │compatibility│
+   │+ resume  │0.27+      │+ SDK      │CLI / SDK   │
+   └──────────┴───────────┴───────────┴────────────┘
                     │
      shared stream/card event model
                     │
@@ -36,7 +35,10 @@ Codex is the default engine and currently uses `codex exec --json` plus
 native mid-turn steering. Kimi Code 0.27+ uses its official loopback Server API
 for durable Sessions, snapshots, questions, tools, subagents, goals, and
 completion state. Feishu mid-turn steering is not exposed in this release.
-Claude remains an explicit
+OpenCode 1.17.14 uses its official v2 Server API and pinned SDK for live events,
+durable Sessions, questions, permissions, steering, cancellation, and subagents.
+MetaBot starts one authenticated loopback server per bot by default, or connects
+to an explicitly configured external server without owning its shutdown. Claude remains an explicit
 compatibility engine for existing bots and workspaces.
 
 ## Three Pillars
@@ -55,7 +57,7 @@ compatibility engine for existing bots and workspaces.
 Channel event
   → EventHandler (parse, media, exact @Bot routing)
   → MessageBridge (commands, queue, task/session state)
-  → Engine.createExecutor() (Codex, Kimi, or Claude compatibility)
+  → Engine.createExecutor() (Codex, Kimi, OpenCode, or Claude compatibility)
   → engine output translated into shared EngineEvent/CardState events
   → throttled streaming card or channel response
 ```
@@ -85,6 +87,7 @@ renderer.
 |---|---|---|
 | Codex | `codex exec --json` JSONL | `codex exec resume` continues a saved session |
 | Kimi Code | Official `/api/v1` local Server API | Durable Kimi Sessions and atomic frontend snapshots |
+| OpenCode | Official v2 Server API + pinned SDK | Durable native Sessions, global SSE events, and history recovery |
 | Claude compatibility | Claude CLI / Agent SDK | Existing Claude sessions and persistent-executor behavior |
 
 ## Key Modules
@@ -98,6 +101,7 @@ renderer.
 | `src/engines/codex/executor.ts` | Spawns Codex exec/resume and translates JSONL events. |
 | `src/engines/kimi/daemon-client.ts` | Starts or connects to the Kimi Code local Server API. |
 | `src/engines/kimi/executor.ts` | Drives Kimi Sessions, snapshots, steering, questions, goals, and completion. |
+| `src/engines/opencode/` | Owns OpenCode runtime lifecycle, SDK control plane, event translation, execution, and session discovery. |
 | `src/engines/claude/` | Claude compatibility executor, session, and stream-processing code. |
 | `src/feishu/event-handler.ts` | Feishu event parsing, media cache, group modes, and exact mention routing. |
 | `src/telegram/` / `src/wechat/` | Telegram and WeChat channel adapters. |

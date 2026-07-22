@@ -2,13 +2,14 @@
 
 # 🤖 MetaBot
 
-### 从飞书/Lark、Telegram、微信或 Web 使用 Codex 和 Kimi Code
+### 从飞书/Lark、Telegram、微信或 Web 使用 Codex、Kimi Code 和 OpenCode
 
 _可自托管的个人 Agent 工作台；Claude Code 作为兼容引擎继续保留。_
 
 <p>
   <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Engine-Codex_CLI-412991?style=for-the-badge&logo=openai&logoColor=white" alt="Codex CLI"></a>
   <a href="https://www.kimi.com/code"><img src="https://img.shields.io/badge/Engine-Kimi_Code-1A73E8?style=for-the-badge" alt="Kimi Code"></a>
+  <a href="https://opencode.ai"><img src="https://img.shields.io/badge/Engine-OpenCode-111111?style=for-the-badge" alt="OpenCode"></a>
   <a href="https://github.com/anthropics/claude-code"><img src="https://img.shields.io/badge/Compatibility-Claude_Code-D97757?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude Code 兼容"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.19-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js 22.19 或更高版本">
@@ -55,12 +56,13 @@ MetaBot 运行在你自己的机器上，不依赖企业 SSO、OIDC、VPN 或员
 
 ## 引擎
 
-Codex 是默认引擎，Kimi Code 是一级可选引擎。Claude Code 继续保留，确保现有 Claude Bot 和工作区仍能运行。
+Codex 是默认引擎；Kimi Code 和 OpenCode 是一级可选引擎。Claude Code 继续保留，确保现有 Claude Bot 和工作区仍能运行。
 
 | 引擎                 | 接入方式                                   | 认证                                  | 当前开源版能力                                                                     |
 | -------------------- | ------------------------------------------ | ------------------------------------- | ---------------------------------------------------------------------------------- |
 | **Codex CLI**        | `codex exec --json` 和 `codex exec resume` | `codex login` 或 OpenAI 兼容 API 配置 | JSONL 流式输出、工具、会话续接、`/model`、`/effort`、Bridge 管理的 Goal 和后台任务 |
 | **Kimi Code 0.27+**  | Kimi Web 前端同源的官方本地 Server API     | `kimi login`                          | 持久 Session、原子快照、问题交互、停止/续接、工具、子 Agent 和 Goal                |
+| **OpenCode 1.17.14** | 官方 v2 Server API 和 `@opencode-ai/sdk`   | 使用 OpenCode 已配置的 Provider       | 实时文本/工具事件、持久 Session、问题与权限、steering、停止和子 Agent              |
 | **Claude Code 兼容** | Claude CLI / Agent SDK 兼容路径            | `claude login` 或 Anthropic 兼容 API  | 继续支持现有 Claude 会话、Skills 和工作区                                          |
 
 当前公开版 Codex 适配器使用 `codex exec`；Codex app-server 以及 Codex/Kimi 的飞书执行中 steering 将在后续基础链完整后开放。
@@ -73,17 +75,20 @@ codex login
 
 npm install -g @moonshot-ai/kimi-code@latest   # Kimi Code 0.27+
 kimi login
+
+npm install -g opencode-ai@1.17.14
+opencode   # 首次运行时配置 Provider
 ```
 
 每个 Bot 在 `bots.json` 中独立选择引擎；省略时默认为 `codex`。详见[多 Bot 配置](docs/configuration/multi-bot.zh.md)和[环境变量](docs/configuration/environment-variables.zh.md)。
 
 各引擎继续使用自己的工作区约定：
 
-| 内容       | Codex            | Kimi Code         | Claude 兼容          |
-| ---------- | ---------------- | ----------------- | -------------------- |
-| 工作区说明 | `AGENTS.md`      | `AGENTS.md`       | `CLAUDE.md` 兼容入口 |
-| Skills     | `.codex/skills/` | `.agents/skills/` | `.claude/skills/`    |
-| 订阅状态   | Codex profile    | `~/.kimi-code/`   | Claude credentials   |
+| 内容       | Codex            | Kimi Code         | OpenCode          | Claude 兼容          |
+| ---------- | ---------------- | ----------------- | ----------------- | -------------------- |
+| 工作区说明 | `AGENTS.md`      | `AGENTS.md`       | `AGENTS.md`       | `CLAUDE.md` 兼容入口 |
+| Skills     | `.codex/skills/` | `.agents/skills/` | `.agents/skills/` | `.claude/skills/`    |
+| 认证状态   | Codex profile    | `~/.kimi-code/`   | OpenCode Provider | Claude credentials   |
 
 安装器会把 MetaBot 内置 Skills 镜像到当前引擎路径，并保留用户已修改的本地 Skills。
 
@@ -92,7 +97,7 @@ kimi login
 前置条件：**Node.js >= 22.19**、Git，以及至少一个引擎和一个聊天渠道的凭证。
 
 1. 执行上面的一行安装命令。
-2. 选择 Codex 或 Kimi Code，并在独立终端完成登录。
+2. 选择 Codex、Kimi Code 或 OpenCode，并在独立终端完成认证/Provider 配置。
 3. 按引导连接飞书/Lark、Telegram 或微信。
 4. 验证服务并打开本地控制台：
 

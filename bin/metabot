@@ -1183,7 +1183,7 @@ def usage():
   metabot teams next <team> <agent> [--read] [--summary|--plain]
   metabot teams watch <team> [--interval sec] [--count n] [--summary|--plain]
   metabot teams agents list <team>
-  metabot teams agents spawn <team> <name> [--role r] [--engine claude|codex|kimi] [--prompt p]
+  metabot teams agents spawn <team> <name> [--role r] [--engine claude|codex|kimi|opencode] [--prompt p]
   metabot teams agents stop <team> <name>
   metabot teams agents delete <team> <name>
   metabot teams send <team> <to> <message> [--from name] [--summary text]

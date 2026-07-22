@@ -91,7 +91,7 @@ metabot teams stop <team>
 metabot teams delete <team>
 
 metabot teams agents list <team>
-metabot teams agents spawn <team> <name> [--role <role>] [--engine claude|codex|kimi] [--prompt <text>]
+metabot teams agents spawn <team> <name> [--role <role>] [--engine claude|codex|kimi|opencode] [--prompt <text>]
 metabot teams agents stop <team> <name>
 metabot teams agents delete <team> <name>
 

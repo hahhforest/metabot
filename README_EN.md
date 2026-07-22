@@ -2,13 +2,14 @@
 
 # 🤖 MetaBot
 
-### Run Codex and Kimi Code from Feishu/Lark, Telegram, WeChat, or the Web
+### Run Codex, Kimi Code, and OpenCode from Feishu/Lark, Telegram, WeChat, or the Web
 
 _A self-hosted personal agent workspace. Claude Code remains available for compatibility._
 
 <p>
   <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Engine-Codex_CLI-412991?style=for-the-badge&logo=openai&logoColor=white" alt="Codex CLI"></a>
   <a href="https://www.kimi.com/code"><img src="https://img.shields.io/badge/Engine-Kimi_Code-1A73E8?style=for-the-badge" alt="Kimi Code"></a>
+  <a href="https://opencode.ai"><img src="https://img.shields.io/badge/Engine-OpenCode-111111?style=for-the-badge" alt="OpenCode"></a>
   <a href="https://github.com/anthropics/claude-code"><img src="https://img.shields.io/badge/Compatibility-Claude_Code-D97757?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude Code compatibility"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.19-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js 22.19 or newer">
@@ -55,12 +56,13 @@ installs retain separate update paths so `metabot update` never guesses blindly.
 
 ## Engines
 
-Codex is the default engine. Kimi Code is a first-class alternative. Claude Code is retained so existing Claude-based bots and workspaces continue to run.
+Codex is the default engine. Kimi Code and OpenCode are first-class alternatives. Claude Code is retained so existing Claude-based bots and workspaces continue to run.
 
 | Engine                        | Connects through                                          | Authentication                                       | Current OSS behavior                                                                                   |
 | ----------------------------- | --------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | **Codex CLI**                 | `codex exec --json` and `codex exec resume`               | `codex login` or OpenAI-compatible API configuration | JSONL streaming, tools, session resume, `/model`, `/effort`, bridge-managed goals and background tasks |
 | **Kimi Code 0.27+**           | Official local Server API used by Kimi's own web frontend | `kimi login`                                         | Durable Sessions, live snapshots, questions, stop/resume, tools, subagents, and goals                  |
+| **OpenCode 1.17.14**          | Official v2 Server API and `@opencode-ai/sdk`             | An OpenCode-configured provider                      | Live text/tools, durable Sessions, questions, permissions, steering, cancellation, and subagents       |
 | **Claude Code compatibility** | Claude CLI / Agent SDK compatibility path                 | `claude login` or Anthropic-compatible API           | Existing Claude sessions, skills, and workspaces remain usable                                         |
 
 The public Codex adapter currently uses `codex exec`; Codex app-server and Feishu mid-turn steering for Codex/Kimi remain gated on the later shared reliability foundation.
@@ -73,17 +75,20 @@ codex login
 
 npm install -g @moonshot-ai/kimi-code@latest   # Kimi Code 0.27+
 kimi login
+
+npm install -g opencode-ai@1.17.14
+opencode   # configure a provider on first run
 ```
 
 Each bot selects an engine in `bots.json`; if omitted, the engine defaults to `codex`. See [Multi-Bot Configuration](docs/configuration/multi-bot.md) and [Environment Variables](docs/configuration/environment-variables.md).
 
 Engine workspace conventions remain native:
 
-| Content            | Codex            | Kimi Code         | Claude compatibility            |
-| ------------------ | ---------------- | ----------------- | ------------------------------- |
-| Instructions       | `AGENTS.md`      | `AGENTS.md`       | `CLAUDE.md` compatibility entry |
-| Skills             | `.codex/skills/` | `.agents/skills/` | `.claude/skills/`               |
-| Subscription state | Codex profile    | `~/.kimi-code/`   | Claude credentials              |
+| Content            | Codex            | Kimi Code         | OpenCode          | Claude compatibility            |
+| ------------------ | ---------------- | ----------------- | ----------------- | ------------------------------- |
+| Instructions       | `AGENTS.md`      | `AGENTS.md`       | `AGENTS.md`       | `CLAUDE.md` compatibility entry |
+| Skills             | `.codex/skills/` | `.agents/skills/` | `.agents/skills/` | `.claude/skills/`               |
+| Authentication     | Codex profile    | `~/.kimi-code/`   | OpenCode provider | Claude credentials              |
 
 The installer mirrors MetaBot's bundled skills into the active engine paths;
 your existing locally modified skills are preserved.
@@ -93,7 +98,7 @@ your existing locally modified skills are preserved.
 Prerequisites: **Node.js >= 22.19**, Git, and credentials for at least one engine and one chat channel.
 
 1. Run the one-line installer above.
-2. Choose Codex or Kimi Code and complete its login in a separate terminal.
+2. Choose Codex, Kimi Code, or OpenCode and complete its authentication/provider setup in a separate terminal.
 3. Connect Feishu/Lark, Telegram, or WeChat when prompted.
 4. Verify the services and open the local console:
 

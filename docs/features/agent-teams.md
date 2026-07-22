@@ -1,6 +1,6 @@
 # Agent Teams
 
-MetaBot Agent Teams let a lead agent coordinate persistent specialist teammates through the local bridge. The coordination model is engine-neutral: teams can declare Claude, Codex, or Kimi teammates, and all coordination is stored in the bridge database instead of being hidden inside one model session. Execution still runs through the current bridge and session-engine path, so each configured engine must be supported by that bridge runtime.
+MetaBot Agent Teams let a lead agent coordinate persistent specialist teammates through the local bridge. The coordination model is engine-neutral: teams can declare Claude, Codex, Kimi, or OpenCode teammates, and all coordination is stored in the bridge database instead of being hidden inside one model session. Execution still runs through the current bridge and session-engine path, so each configured engine must be supported by that bridge runtime.
 
 ## What It Does
 
@@ -141,7 +141,7 @@ metabot teams start <team>
 metabot teams stop <team>
 
 metabot teams agents list <team>
-metabot teams agents spawn <team> <name> [--role <role>] [--engine claude|codex|kimi] [--prompt <text>]
+metabot teams agents spawn <team> <name> [--role <role>] [--engine claude|codex|kimi|opencode] [--prompt <text>]
 metabot teams agents stop <team> <name>
 metabot teams agents delete <team> <name>
 
