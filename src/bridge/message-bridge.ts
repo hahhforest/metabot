@@ -2278,7 +2278,7 @@ export class MessageBridge {
           // flush), so surfacing it here would be a post-answer DUPLICATE card.
           // The synthetic-id watcher path owns AUQ on PTY — just clear and skip.
           // (Mirrors the continuation-stream guard above.)
-          if (this.config.claude.backend === 'pty') {
+          if (engineName === 'claude' && this.config.claude.backend === 'pty') {
             processor.clearPendingQuestion();
             continue;
           }

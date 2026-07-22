@@ -56,7 +56,7 @@ Channel event
   → EventHandler (parse, media, exact @Bot routing)
   → MessageBridge (commands, queue, task/session state)
   → Engine.createExecutor() (Codex, Kimi, or Claude compatibility)
-  → engine output translated into shared SDKMessage/CardState events
+  → engine output translated into shared EngineEvent/CardState events
   → throttled streaming card or channel response
 ```
 

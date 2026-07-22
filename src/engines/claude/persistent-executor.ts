@@ -34,8 +34,9 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKUserMessage, SpawnOptions, SpawnedProcess, Query } from '@anthropic-ai/claude-agent-sdk';
 import type { Logger } from '../../utils/logger.js';
 import { AsyncQueue } from '../../utils/async-queue.js';
-import type { SDKMessage, TeamEvent, ApiContext } from './executor.js';
 import { buildMetaBotApiPromptContext } from '../prompt-context.js';
+import type { EngineEvent } from '../protocol.js';
+import type { TeamEvent, ApiContext } from './executor.js';
 import { apply1MContextSettings } from './executor.js';
 import { makeCanUseTool } from './exit-plan-mode.js';
 import { ptyQuery } from './pty/pty-query.js';
@@ -195,7 +196,7 @@ export interface TurnHandle {
   /** Stable id for logging / bridge correlation. */
   readonly turnId: string;
   /** Async iterable yielding SDK messages for this turn only. */
-  readonly stream: AsyncIterable<SDKMessage>;
+  readonly stream: AsyncIterable<EngineEvent>;
   /** Was this turn explicitly aborted by the caller? */
   isAborted(): boolean;
   /** Has the turn reached its natural result message? */
@@ -229,7 +230,7 @@ export interface TurnHandle {
 
 interface ActiveTurn {
   id: string;
-  queue: AsyncQueue<SDKMessage>;
+  queue: AsyncQueue<EngineEvent>;
   /** Caller has stopped listening (queue finished); we still drain SDK output. */
   detached: boolean;
   /** SDK observed terminal result for this turn (cleanly OR after interrupt). */
@@ -370,7 +371,7 @@ export function isKeepPlanning(choice: string): boolean {
 export class PersistentClaudeExecutor extends EventEmitter {
   private state: ExecutorState = 'starting';
   private inputQueue: AsyncQueue<SDKUserMessage>;
-  private rawStream?: AsyncGenerator<SDKMessage>;
+  private rawStream?: AsyncGenerator<EngineEvent>;
   /** The Query handle from query() — exposes interrupt() for hard-aborts. */
   private queryHandle?: Query;
   private sessionId?: string;
@@ -378,7 +379,7 @@ export class PersistentClaudeExecutor extends EventEmitter {
   /** AskUserQuestion PreToolUse hook resolvers, keyed by tool_use_id. */
   private pendingQuestionResolvers = new Map<string, (answers: Record<string, string>) => void>();
   /** Spontaneous-message ring buffer (between-turn events). */
-  private spontaneousBuffer: SDKMessage[] = [];
+  private spontaneousBuffer: EngineEvent[] = [];
   private idleTimerId?: ReturnType<typeof setTimeout>;
   private lastActivityAt = Date.now();
   private restartAttempts = 0;
@@ -514,14 +515,14 @@ export class PersistentClaudeExecutor extends EventEmitter {
         options: ptyOptions,
       });
       this.queryHandle = stream as unknown as Query;
-      this.rawStream = stream as unknown as AsyncGenerator<SDKMessage>;
+      this.rawStream = stream as unknown as AsyncGenerator<EngineEvent>;
     } else {
       const stream = query({
         prompt: this.inputQueue,
         options: queryOptions as any,
       });
       this.queryHandle = stream;
-      this.rawStream = stream as unknown as AsyncGenerator<SDKMessage>;
+      this.rawStream = stream as unknown as AsyncGenerator<EngineEvent>;
     }
 
     this.consumePromise = this.consumeLoop();
@@ -569,7 +570,7 @@ export class PersistentClaudeExecutor extends EventEmitter {
     }
     this.touchActivity();
     const turnId = `t${++this.turnCounter}-${Date.now().toString(36)}`;
-    const queue = new AsyncQueue<SDKMessage>();
+    const queue = new AsyncQueue<EngineEvent>();
     const turn: ActiveTurn = { id: turnId, queue, detached: false, completed: false };
     this.activeTurn = turn;
 
@@ -583,7 +584,7 @@ export class PersistentClaudeExecutor extends EventEmitter {
     this.options.logger.debug({ turnId, promptLen: prompt.length }, 'PersistentExecutor: turn started');
     this.emit('turn-started', turnId);
 
-    const stream: AsyncIterable<SDKMessage> = {
+    const stream: AsyncIterable<EngineEvent> = {
       [Symbol.asyncIterator]: () => queue[Symbol.asyncIterator](),
     };
     const abort = async (): Promise<void> => {
@@ -647,7 +648,7 @@ export class PersistentClaudeExecutor extends EventEmitter {
    */
   private makeContinuationHandle(turn: ActiveTurn): TurnHandle {
     const turnId = turn.id;
-    const stream: AsyncIterable<SDKMessage> = {
+    const stream: AsyncIterable<EngineEvent> = {
       [Symbol.asyncIterator]: () => turn.queue[Symbol.asyncIterator](),
     };
     const abort = async (): Promise<void> => {
@@ -724,7 +725,7 @@ export class PersistentClaudeExecutor extends EventEmitter {
   }
 
   /** Drain spontaneous messages that arrived between turns. */
-  drainSpontaneous(): SDKMessage[] {
+  drainSpontaneous(): EngineEvent[] {
     const out = this.spontaneousBuffer;
     this.spontaneousBuffer = [];
     return out;
@@ -1020,7 +1021,7 @@ export class PersistentClaudeExecutor extends EventEmitter {
     return { kind: 'cancel' };
   }
 
-  private pushSpontaneous(msg: SDKMessage): void {
+  private pushSpontaneous(msg: EngineEvent): void {
     const limit = this.options.spontaneousBufferLimit ?? DEFAULT_SPONTANEOUS_LIMIT;
     if (limit > 0 && this.spontaneousBuffer.length >= limit) {
       // Drop oldest (ring buffer)
@@ -1050,7 +1051,7 @@ export class PersistentClaudeExecutor extends EventEmitter {
     if (!this.rawStream) return;
     try {
       for await (const raw of this.rawStream) {
-        const msg = raw as SDKMessage;
+        const msg = raw as EngineEvent;
         if (msg.session_id) this.sessionId = msg.session_id;
         this.touchActivity();
 
@@ -1086,7 +1087,7 @@ export class PersistentClaudeExecutor extends EventEmitter {
           // agent is now responding. Open a synthetic main-line turn so
           // the bridge can render a fresh streaming card.
           const turnId = `c${++this.turnCounter}-${Date.now().toString(36)}`;
-          const queue = new AsyncQueue<SDKMessage>();
+          const queue = new AsyncQueue<EngineEvent>();
           const continuationTurn: ActiveTurn = {
             id: turnId,
             queue,

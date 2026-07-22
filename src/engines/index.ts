@@ -4,6 +4,7 @@ import type { Engine, EngineName } from './types.js';
 import { ClaudeEngine } from './claude/index.js';
 import { KimiEngine } from './kimi/index.js';
 import { CodexEngine } from './codex/index.js';
+import { isEngineName } from './names.js';
 
 /**
  * Create an Engine for the given bot config.
@@ -37,12 +38,15 @@ export function createEngine(
 export function resolveEngineName(config: BotConfigBase): EngineName {
   const explicit = config.engine;
   if (explicit) return explicit;
-  const envDefault = process.env.METABOT_ENGINE as EngineName | undefined;
-  if (envDefault === 'claude' || envDefault === 'kimi' || envDefault === 'codex') return envDefault;
+  const envDefault = process.env.METABOT_ENGINE;
+  if (isEngineName(envDefault)) return envDefault;
   return 'codex';
 }
 
 export type { Engine, EngineName, Executor } from './types.js';
+export { ENGINE_NAMES, isEngineName } from './names.js';
+export { ENGINE_DESCRIPTORS, getEngineDescriptor } from './registry.js';
+export type { EngineCapabilities, EngineDescriptor } from './registry.js';
 export { ClaudeEngine } from './claude/index.js';
 export { KimiEngine } from './kimi/index.js';
 export { CodexEngine } from './codex/index.js';
@@ -58,10 +62,10 @@ export {
 } from './claude/index.js';
 export type {
   UserSession,
-  SDKMessage,
   ExecutionHandle,
   ExecutorOptions,
   ApiContext,
   DetectedTool,
   TeamEvent,
 } from './claude/index.js';
+export type { EngineEvent } from './protocol.js';

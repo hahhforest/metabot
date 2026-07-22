@@ -3,6 +3,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { AgentTeamConfig } from './agent-teams/team-store.js';
+import type { EngineName } from './engines/names.js';
+
+export type { EngineName } from './engines/names.js';
 
 function loadEnvFiles(): void {
   const originalEnv = new Set(Object.keys(process.env));
@@ -34,8 +37,6 @@ function loadEnvFiles(): void {
 
 loadEnvFiles();
 
-/** Agent engine backing a bot. */
-export type EngineName = 'claude' | 'kimi' | 'codex';
 export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
 
 export function normalizeCodexReasoningEffort(value: unknown): CodexReasoningEffort | undefined {

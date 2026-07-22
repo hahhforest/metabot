@@ -1,7 +1,7 @@
 import type { BotConfigBase } from '../../config.js';
 import type { Logger } from '../../utils/logger.js';
 import type { Engine, Executor } from '../types.js';
-import { StreamProcessor } from '../claude/stream-processor.js';
+import { getEngineDescriptor } from '../registry.js';
 import { KimiExecutor } from './executor.js';
 
 /**
@@ -11,6 +11,7 @@ import { KimiExecutor } from './executor.js';
  */
 export class KimiEngine implements Engine {
   readonly name = 'kimi' as const;
+  readonly descriptor = getEngineDescriptor(this.name);
 
   constructor(
     private config: BotConfigBase,
@@ -19,10 +20,6 @@ export class KimiEngine implements Engine {
 
   createExecutor(): Executor {
     return new KimiExecutor(this.config, this.logger);
-  }
-
-  createStreamProcessor(userPrompt: string): StreamProcessor {
-    return new StreamProcessor(userPrompt);
   }
 }
 

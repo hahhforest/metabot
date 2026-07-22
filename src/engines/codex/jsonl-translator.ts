@@ -1,4 +1,4 @@
-import type { SDKMessage } from '../claude/executor.js';
+import type { EngineEvent } from '../protocol.js';
 
 export interface CodexTranslatorState {
   sessionId?: string;
@@ -62,7 +62,7 @@ export function createCodexTranslatorState(options: {
 export function translateCodexJsonEvent(
   event: CodexJsonEvent,
   state: CodexTranslatorState,
-): SDKMessage[] {
+): EngineEvent[] {
   switch (event.type) {
     case 'thread.started':
       if (!event.thread_id) return [];
@@ -97,7 +97,7 @@ export function translateCodexJsonEvent(
   }
 }
 
-function translateStartedItem(item: CodexItem, state: CodexTranslatorState): SDKMessage[] {
+function translateStartedItem(item: CodexItem, state: CodexTranslatorState): EngineEvent[] {
   if (item.type !== 'command_execution') return [];
   return [{
     type: 'assistant',
@@ -113,7 +113,7 @@ function translateStartedItem(item: CodexItem, state: CodexTranslatorState): SDK
   }];
 }
 
-function translateCompletedItem(item: CodexItem, state: CodexTranslatorState): SDKMessage[] {
+function translateCompletedItem(item: CodexItem, state: CodexTranslatorState): EngineEvent[] {
   if (item.type === 'agent_message') {
     const text = typeof item.text === 'string' ? item.text : '';
     state.lastAgentText = text;
@@ -158,7 +158,7 @@ function buildResultMessage(
   state: CodexTranslatorState,
   isError: boolean,
   errorMessage?: string,
-): SDKMessage {
+): EngineEvent {
   const reliableUsage = state.lastUsage ?? usage;
   const outputTokens = reliableUsage?.output_tokens ?? 0;
   const totalTokens = reliableUsage?.total_tokens;

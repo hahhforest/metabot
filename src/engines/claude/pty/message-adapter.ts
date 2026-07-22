@@ -2,18 +2,18 @@
  * PTY backend — message adapter.
  *
  * Translates raw JSONL records from an interactive Claude session into the
- * in-repo {@link SDKMessage} shape consumed by stream-processor.ts.
+ * in-repo {@link EngineEvent} shape consumed by stream-processor.ts.
  *
  * Key mappings:
- *   - `type:'assistant'` records → SDKMessage with content blocks preserved
- *   - `type:'user'` records (tool_result) → SDKMessage type:'user' (stream-processor
+ *   - `type:'assistant'` records → EngineEvent with content blocks preserved
+ *   - `type:'user'` records (tool_result) → EngineEvent type:'user' (stream-processor
  *     doesn't branch on 'user', but we forward for completeness / future use)
- *   - `type:'system'` records → SDKMessage type:'system' with subtype
+ *   - `type:'system'` records → EngineEvent type:'system' with subtype
  *   - Noise records (file-history-snapshot, queue-operation, progress, last-prompt) → null
- *   - synthesizeResult() builds a terminal `type:'result'` SDKMessage
+ *   - synthesizeResult() builds a terminal `type:'result'` EngineEvent
  */
 
-import type { SDKMessage } from '../executor.js';
+import type { EngineEvent } from '../../protocol.js';
 import type { AdaptJsonlRecord, SynthesizeResult, RawJsonlRecord } from './contract.js';
 
 /**
@@ -29,11 +29,11 @@ const DROP_TYPES = new Set([
 ]);
 
 /**
- * Map a single raw JSONL record to zero, one, or multiple SDKMessages.
+ * Map a single raw JSONL record to zero, one, or multiple EngineEvents.
  */
 export const adaptJsonlRecord: AdaptJsonlRecord = (
   record: RawJsonlRecord,
-): SDKMessage | SDKMessage[] | null => {
+): EngineEvent | EngineEvent[] | null => {
   const recType = record.type as string | undefined;
   if (!recType || DROP_TYPES.has(recType)) return null;
 
@@ -60,14 +60,14 @@ export const adaptJsonlRecord: AdaptJsonlRecord = (
 function adaptAssistant(
   record: RawJsonlRecord,
   sessionId: string | undefined,
-): SDKMessage | null {
+): EngineEvent | null {
   const msg = record.message as Record<string, unknown> | undefined;
   if (!msg) return null;
 
   const rawContent = msg.content;
   if (!Array.isArray(rawContent)) return null;
 
-  // Map content blocks — keep only the fields SDKMessage.message.content expects.
+  // Map content blocks — keep only the fields EngineEvent.message.content expects.
   const content = rawContent
     .map(mapContentBlock)
     .filter((b): b is NonNullable<typeof b> => b !== null);
@@ -88,7 +88,7 @@ function adaptAssistant(
 function adaptUser(
   record: RawJsonlRecord,
   sessionId: string | undefined,
-): SDKMessage | null {
+): EngineEvent | null {
   const msg = record.message as Record<string, unknown> | undefined;
   if (!msg) return null;
 
@@ -128,7 +128,7 @@ function adaptUser(
 function adaptSystem(
   record: RawJsonlRecord,
   sessionId: string | undefined,
-): SDKMessage | null {
+): EngineEvent | null {
   const subtype = record.subtype as string | undefined;
   // System records without a meaningful subtype are noise (e.g. stop_hook_summary).
   if (!subtype) return null;
@@ -143,9 +143,9 @@ function adaptSystem(
 // ── Content block mapper ─────────────────────────────────────────────────────
 
 /**
- * Map a raw content block to the shape expected by SDKMessage.message.content.
+ * Map a raw content block to the shape expected by EngineEvent.message.content.
  * Keeps: type, text, name, id, input (for tool_use), tool_use_id + content (for tool_result).
- * Drops: thinking blocks (not part of the SDKMessage contract), unknown shapes.
+ * Drops: thinking blocks (not part of the EngineEvent contract), unknown shapes.
  */
 function mapContentBlock(
   block: unknown,
@@ -176,7 +176,7 @@ function mapContentBlock(
       };
 
     case 'thinking':
-      // Thinking blocks are not part of the SDKMessage contract — drop.
+      // Thinking blocks are not part of the EngineEvent contract — drop.
       return null;
 
     default:
@@ -188,11 +188,11 @@ function mapContentBlock(
 // ── Result synthesis ─────────────────────────────────────────────────────────
 
 /**
- * Build a synthetic terminal `result` SDKMessage. Interactive Claude's JSONL
+ * Build a synthetic terminal `result` EngineEvent. Interactive Claude's JSONL
  * has no explicit result line — this is synthesized when the Stop hook fires.
  */
 export const synthesizeResult: SynthesizeResult = (args) => {
-  const msg: SDKMessage = {
+  const msg: EngineEvent = {
     type: 'result',
     subtype: args.isError ? 'error' : 'success',
     session_id: args.sessionId,

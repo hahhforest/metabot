@@ -1,4 +1,4 @@
-import type { SDKMessage } from './executor.js';
+import type { EngineEvent } from '../protocol.js';
 import type {
   BackgroundEvent,
   BackgroundTaskStatus,
@@ -49,7 +49,7 @@ export class StreamProcessor {
 
   constructor(private userPrompt: string) {}
 
-  processMessage(message: SDKMessage): CardState {
+  processMessage(message: EngineEvent): CardState {
     // Capture session_id from any message
     if (message.session_id) {
       this.sessionId = message.session_id;
@@ -106,7 +106,7 @@ export class StreamProcessor {
     };
   }
 
-  private processSystemMessage(message: SDKMessage): void {
+  private processSystemMessage(message: EngineEvent): void {
     const subtype = (message as { subtype?: string }).subtype;
     if (!subtype) return;
     switch (subtype) {
@@ -121,7 +121,7 @@ export class StreamProcessor {
     }
   }
 
-  private recordTaskEvent(message: SDKMessage, subtype: string): void {
+  private recordTaskEvent(message: EngineEvent, subtype: string): void {
     const m = message as Record<string, unknown>;
     const taskId = typeof m.task_id === 'string' ? m.task_id : undefined;
     if (!taskId) return;
@@ -160,7 +160,7 @@ export class StreamProcessor {
     });
   }
 
-  private recordCodexTaskNotification(message: SDKMessage): void {
+  private recordCodexTaskNotification(message: EngineEvent): void {
     const m = message as Record<string, unknown>;
     const result = typeof m.result === 'string' ? m.result : undefined;
     if (!result) return;
@@ -173,7 +173,7 @@ export class StreamProcessor {
     });
   }
 
-  private processAssistantMessage(message: SDKMessage): void {
+  private processAssistantMessage(message: EngineEvent): void {
     if (!message.message?.content) return;
 
     for (const block of message.message.content) {
@@ -211,7 +211,7 @@ export class StreamProcessor {
     }
   }
 
-  private processStreamEvent(message: SDKMessage): void {
+  private processStreamEvent(message: EngineEvent): void {
     const event = message.event;
     if (!event) return;
 
@@ -255,7 +255,7 @@ export class StreamProcessor {
     }
   }
 
-  private processResultMessage(message: SDKMessage): CardState {
+  private processResultMessage(message: EngineEvent): CardState {
     this.costUsd = message.total_cost_usd;
     this.durationMs = message.duration_ms;
 

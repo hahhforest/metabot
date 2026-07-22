@@ -54,7 +54,7 @@ Codex 是默认引擎，当前使用 `codex exec --json` 和 `codex exec resume`
   → EventHandler（解析、媒体、精确 @Bot 路由）
   → MessageBridge（命令、队列、任务/会话状态）
   → Engine.createExecutor()（Codex、Kimi 或 Claude 兼容）
-  → 原生输出转换为共享 SDKMessage/CardState 事件
+  → 原生输出转换为共享 EngineEvent/CardState 事件
   → 节流后的流式卡片或渠道回复
 ```
 

@@ -9,9 +9,9 @@ import type {
   ApiContext,
   ExecutionHandle,
   ExecutorOptions,
-  SDKMessage,
 } from '../claude/executor.js';
 import { buildMetaBotApiPromptContext } from '../prompt-context.js';
+import type { EngineEvent } from '../protocol.js';
 import {
   createCodexTranslatorState,
   translateCodexJsonEvent,
@@ -165,7 +165,7 @@ function findCodexSessionFile(root: string, sessionId: string): string | undefin
   return undefined;
 }
 
-function applyTokenCountSnapshot(message: SDKMessage, snapshot: CodexTokenCountSnapshot | undefined): SDKMessage {
+function applyTokenCountSnapshot(message: EngineEvent, snapshot: CodexTokenCountSnapshot | undefined): EngineEvent {
   if (!snapshot?.usage || !message.modelUsage) return message;
   const model = Object.keys(message.modelUsage)[0];
   if (!model) return message;
@@ -309,7 +309,7 @@ export class CodexExecutor {
     const model = options.model ?? codexConfig.model;
     const modelMetadata = resolveCodexModelMetadata(codexConfig, model);
     const fullPrompt = this.buildPromptWithContext(prompt, outputsDir, apiContext);
-    const queue = new AsyncQueue<SDKMessage>();
+    const queue = new AsyncQueue<EngineEvent>();
     const state = createCodexTranslatorState({
       model: modelMetadata.model,
       contextWindow: modelMetadata.contextWindow,
@@ -318,7 +318,7 @@ export class CodexExecutor {
     const startTime = Date.now();
     let child: ChildProcess | undefined;
     let sawResult = false;
-    let pendingResult: SDKMessage | undefined;
+    let pendingResult: EngineEvent | undefined;
     let stderr = '';
     let stdoutBuffer = '';
     let terminalResultDelivered = false;
@@ -439,7 +439,7 @@ export class CodexExecutor {
     }
 
     return {
-      stream: queue[Symbol.asyncIterator]() as AsyncGenerator<SDKMessage>,
+      stream: queue[Symbol.asyncIterator]() as AsyncGenerator<EngineEvent>,
       sendAnswer: (_toolUseId: string, _sid: string, _answerText: string) => {
         this.logger.warn({ engine: 'codex' }, 'sendAnswer called on Codex executor — not implemented');
       },
@@ -454,7 +454,7 @@ export class CodexExecutor {
     };
   }
 
-  async *execute(options: ExecutorOptions): AsyncGenerator<SDKMessage> {
+  async *execute(options: ExecutorOptions): AsyncGenerator<EngineEvent> {
     const handle = this.startExecution(options);
     try {
       for await (const msg of handle.stream) {

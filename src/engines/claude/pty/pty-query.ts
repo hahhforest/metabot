@@ -3,20 +3,20 @@
  *
  * Shaped identically at the call site in persistent-executor.ts:
  *   const stream = ptyQuery({ prompt: this.inputQueue, options: queryOptions });
- *   // stream is async-iterable<SDKMessage> AND has .interrupt()
+ *   // stream is async-iterable<EngineEvent> AND has .interrupt()
  *
  * It wires together the three W1/W2 modules:
  *   - PtyClaudeSession  — drives a REAL interactive `claude` process (no -p),
  *     so the turn bills against the Claude Code subscription pool (via
  *     TeamClaude for load balancing) rather than the Agent SDK credit pool.
  *   - JsonlScanner      — tails the session jsonl, yielding raw records.
- *   - messageAdapter    — raw record → SDKMessage (the shape stream-processor
+ *   - messageAdapter    — raw record → EngineEvent (the shape stream-processor
  *     already understands).
  *   - PtyHookBridge     — settings.json command hooks; the Stop hook fires
  *     onTurnComplete, which we turn into a synthesized terminal `result`
- *     SDKMessage (interactive jsonl has no explicit result line).
+ *     EngineEvent (interactive jsonl has no explicit result line).
  *
- * Concurrency model: one unified AsyncQueue<SDKMessage> (`out`) is the single
+ * Concurrency model: one unified AsyncQueue<EngineEvent> (`out`) is the single
  * output channel the caller iterates. Three detached loops feed/drive it:
  *   1. scanner loop  — adapts jsonl records into `out`, tracking usage/session.
  *   2. prompt loop   — consumes the input prompt iterable, typing each user
@@ -30,7 +30,7 @@ import { randomUUID } from 'node:crypto';
 import { openSync, readSync, statSync, closeSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { SDKMessage } from '../executor.js';
+import type { EngineEvent } from '../../protocol.js';
 import { AsyncQueue } from '../../../utils/async-queue.js';
 import type {
   PtyQuery,
@@ -170,7 +170,7 @@ export const ptyQuery = (args: {
   const { logger } = options;
 
   // The single output channel the caller iterates.
-  const out = new AsyncQueue<SDKMessage>();
+  const out = new AsyncQueue<EngineEvent>();
 
   // Hook bridge: owns settings.json + Stop/team-event command hooks.
   const hookBridge: PtyHookBridge = options.hookBridge ?? createHookBridge();

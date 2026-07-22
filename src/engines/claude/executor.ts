@@ -10,6 +10,7 @@ import type { Logger } from '../../utils/logger.js';
 import { AsyncQueue } from '../../utils/async-queue.js';
 import { buildMetaBotApiPromptContext } from '../prompt-context.js';
 import type { ApiContext } from '../prompt-context.js';
+import type { EngineEvent } from '../protocol.js';
 import { makeCanUseTool } from './exit-plan-mode.js';
 
 export type { ApiContext } from '../prompt-context.js';
@@ -265,50 +266,8 @@ export interface ExecutorOptions {
   onTeamEvent?: (event: TeamEvent) => void;
 }
 
-export type SDKMessage = {
-  type: string;
-  subtype?: string;
-  uuid?: string;
-  session_id?: string;
-  message?: {
-    content?: Array<{
-      type: string;
-      text?: string;
-      name?: string;
-      id?: string;
-      input?: unknown;
-    }>;
-  };
-  // Result fields
-  duration_ms?: number;
-  duration_api_ms?: number;
-  total_cost_usd?: number;
-  result?: string;
-  is_error?: boolean;
-  num_turns?: number;
-  errors?: string[];
-  // Model usage from result message (per-model breakdown)
-  modelUsage?: Record<string, { inputTokens: number; outputTokens: number; contextWindow: number; costUSD: number }>;
-  // Stream event fields
-  event?: {
-    type: string;
-    index?: number;
-    delta?: {
-      type: string;
-      text?: string;
-    };
-    content_block?: {
-      type: string;
-      text?: string;
-      name?: string;
-      id?: string;
-    };
-  };
-  parent_tool_use_id?: string | null;
-};
-
 export interface ExecutionHandle {
-  stream: AsyncGenerator<SDKMessage>;
+  stream: AsyncGenerator<EngineEvent>;
   sendAnswer(toolUseId: string, sessionId: string, answerText: string): void;
   /**
    * Resolve a pending AskUserQuestion PreToolUse hook with the user's answers.
@@ -570,7 +529,7 @@ export class ClaudeExecutor {
 
     const logger = this.logger;
 
-    async function* wrapStream(): AsyncGenerator<SDKMessage> {
+    async function* wrapStream(): AsyncGenerator<EngineEvent> {
       // Race each stream.next() against the abort signal so we exit immediately on /stop
       const abortPromise = new Promise<never>((_, reject) => {
         if (abortController.signal.aborted) {
@@ -591,7 +550,7 @@ export class ClaudeExecutor {
             abortPromise,
           ]);
           if (result.done) break;
-          yield result.value as SDKMessage;
+          yield result.value as EngineEvent;
         }
       } catch (err: any) {
         if (err.name === 'AbortError' || abortController.signal.aborted) {
@@ -654,7 +613,7 @@ export class ClaudeExecutor {
     };
   }
 
-  async *execute(options: ExecutorOptions): AsyncGenerator<SDKMessage> {
+  async *execute(options: ExecutorOptions): AsyncGenerator<EngineEvent> {
     const { prompt, cwd, sessionId, abortController, outputsDir } = options;
 
     this.logger.info({ cwd, hasSession: !!sessionId }, 'Starting Claude execution');
@@ -685,7 +644,7 @@ export class ClaudeExecutor {
           abortPromise,
         ]);
         if (result.done) break;
-        yield result.value as SDKMessage;
+        yield result.value as EngineEvent;
       }
     } catch (err: any) {
       if (err.name === 'AbortError' || abortController.signal.aborted) {

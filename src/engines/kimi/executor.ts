@@ -1,7 +1,8 @@
 import type { BotConfigBase } from '../../config.js';
 import type { Logger } from '../../utils/logger.js';
-import type { ApiContext, ExecutionHandle, ExecutorOptions, SDKMessage } from '../claude/executor.js';
 import { buildMetaBotApiPromptContext } from '../prompt-context.js';
+import type { ApiContext, ExecutionHandle, ExecutorOptions } from '../claude/executor.js';
+import type { EngineEvent } from '../protocol.js';
 import {
   KimiDaemonClient,
   type KimiPendingQuestion,
@@ -125,7 +126,7 @@ export class KimiExecutor {
     const buildPromptWithContext = this.buildPromptWithContext.bind(this);
     const resolveQuestion = this.resolveQuestion.bind(this);
     let turnState: KimiTurnState | undefined;
-    async function* stream(): AsyncGenerator<SDKMessage> {
+    async function* stream(): AsyncGenerator<EngineEvent> {
       try {
         const model = await client.resolveModel(options.model ?? config.kimi?.model);
         const session = await client.openSession(cwd, sessionId, model.id);
@@ -272,7 +273,7 @@ export class KimiExecutor {
     };
   }
 
-  async *execute(options: ExecutorOptions): AsyncGenerator<SDKMessage> {
+  async *execute(options: ExecutorOptions): AsyncGenerator<EngineEvent> {
     const handle = this.startExecution(options);
     try {
       for await (const message of handle.stream) yield message;
@@ -335,8 +336,8 @@ export class KimiExecutor {
   }
 }
 
-function translateSnapshot(snapshot: KimiSessionSnapshot, state: KimiTurnState): SDKMessage[] {
-  const messages: SDKMessage[] = [];
+function translateSnapshot(snapshot: KimiSessionSnapshot, state: KimiTurnState): EngineEvent[] {
+  const messages: EngineEvent[] = [];
   const currentMessages = snapshot.messages.items.filter((message) => !state.baselineMessageIds.has(message.id));
   const fullText = collectAssistantText(currentMessages, snapshot.in_flight_turn?.assistant_text);
   if (fullText !== state.emittedText) {
@@ -462,7 +463,7 @@ function collectTools(
   return tools;
 }
 
-function translateSubagent(task: KimiSubagentTask, state: KimiTurnState): SDKMessage[] {
+function translateSubagent(task: KimiSubagentTask, state: KimiTurnState): EngineEvent[] {
   const signature = `${task.status}:${task.subagent_phase ?? ''}:${task.output_preview ?? ''}`;
   if (state.subagentStates.get(task.id) === signature) return [];
   const previous = state.subagentStates.get(task.id);
@@ -477,11 +478,11 @@ function translateSubagent(task: KimiSubagentTask, state: KimiTurnState): SDKMes
       description: task.description || task.subagent_type || 'Kimi subagent',
       status: terminal ? (task.status === 'completed' ? 'completed' : 'failed') : 'running',
       summary: task.output_preview,
-    } as SDKMessage,
+    } as EngineEvent,
   ];
 }
 
-function buildResult(state: KimiTurnState, status: KimiSessionStatus | undefined, aborted: boolean): SDKMessage {
+function buildResult(state: KimiTurnState, status: KimiSessionStatus | undefined, aborted: boolean): EngineEvent {
   const snapshot = state.lastSnapshot;
   const failed = snapshot?.session.last_turn_reason === 'failed';
   const cancelled = aborted || snapshot?.session.last_turn_reason === 'cancelled';
@@ -512,7 +513,7 @@ function buildResult(state: KimiTurnState, status: KimiSessionStatus | undefined
   };
 }
 
-function localResult(sessionId: string, state: KimiTurnState, text: string): SDKMessage {
+function localResult(sessionId: string, state: KimiTurnState, text: string): EngineEvent {
   state.emittedText = text;
   return {
     type: 'result',

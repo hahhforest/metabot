@@ -16,19 +16,19 @@
  * ----
  * Replace the single Agent-SDK `query()` call in persistent-executor.ts with a
  * drop-in `ptyQuery()` that drives a REAL interactive `claude` process via a
- * PTY and reconstructs the structured `SDKMessage` stream by tailing the
+ * PTY and reconstructs the structured `EngineEvent` stream by tailing the
  * session jsonl. Everything else in persistent-executor.ts stays the same.
  *
  * THE SEAM (persistent-executor.ts ~line 428)
  * -------------------------------------------
  *   const stream = query({ prompt: this.inputQueue, options: queryOptions });
  *   this.queryHandle = stream;                       // used for .interrupt()
- *   this.rawStream  = stream as AsyncGenerator<SDKMessage>; // consumed in consumeLoop
+ *   this.rawStream  = stream as AsyncGenerator<EngineEvent>; // consumed in consumeLoop
  *
  * consumeLoop (line ~828) only relies on the stream being an async-iterable of
- * SDKMessage and on `msg.session_id` / `msg.type === 'result'`. abort() (line
+ * EngineEvent and on `msg.session_id` / `msg.type === 'result'`. abort() (line
  * ~497) only relies on `queryHandle.interrupt()`. So the drop-in must satisfy
- * exactly {@link PtyQuery}: async-iterable<SDKMessage> + interrupt().
+ * exactly {@link PtyQuery}: async-iterable<EngineEvent> + interrupt().
  *
  * The prompt source is an `AsyncIterable<SDKUserMessage>` (an AsyncQueue). Each
  * enqueued user message = one turn (or a tool_result injection). The PTY
@@ -38,7 +38,7 @@
  * can build against a stable shape in parallel.
  */
 
-import type { SDKMessage } from '../executor.js';
+import type { EngineEvent } from '../../protocol.js';
 import type { Logger } from '../../../utils/logger.js';
 
 // SDKUserMessage is the SDK's input shape. We re-declare the structural subset
@@ -162,10 +162,10 @@ export interface PtyParsedQuestion {
 /**
  * The drop-in return value. Mirrors the SDK `Query`'s two contact points used
  * by persistent-executor.ts:
- *   1. async-iterable of SDKMessage (for `for await` in consumeLoop)
+ *   1. async-iterable of EngineEvent (for `for await` in consumeLoop)
  *   2. interrupt(): Promise<void> (for turn abort)
  */
-export interface PtyQuery extends AsyncIterable<SDKMessage> {
+export interface PtyQuery extends AsyncIterable<EngineEvent> {
   /** Interrupt the in-flight turn (sends ESC/Ctrl-C to the TUI). */
   interrupt(): Promise<void>;
   /** Tear down the PTY process + scanner. Called on executor shutdown. */
@@ -278,7 +278,7 @@ export type CreateJsonlScanner = (args: {
 // ── messageAdapter (W2) ──────────────────────────────────────────────────────
 
 /**
- * Translates raw jsonl records → the in-repo {@link SDKMessage} shape that
+ * Translates raw jsonl records → the in-repo {@link EngineEvent} shape that
  * stream-processor.ts already understands. Key responsibilities:
  *   - assistant records → { type:'assistant', message:{content:[...]}, session_id, uuid }
  *   - user records (tool_result, task-notification) → { type:'user', ... }
@@ -293,9 +293,9 @@ export type CreateJsonlScanner = (args: {
  */
 export type AdaptJsonlRecord = (
   record: RawJsonlRecord,
-) => SDKMessage | SDKMessage[] | null;
+) => EngineEvent | EngineEvent[] | null;
 
-/** Build a synthetic terminal `result` SDKMessage to close a turn. */
+/** Build a synthetic terminal `result` EngineEvent to close a turn. */
 export interface SynthesizeResultArgs {
   sessionId: string;
   /** Accumulated assistant text for the `result` field (optional). */
@@ -310,7 +310,7 @@ export interface SynthesizeResultArgs {
     costUSD?: number;
   };
 }
-export type SynthesizeResult = (args: SynthesizeResultArgs) => SDKMessage;
+export type SynthesizeResult = (args: SynthesizeResultArgs) => EngineEvent;
 
 // ── Hook bridge (W2/W4) ──────────────────────────────────────────────────────
 
@@ -347,6 +347,6 @@ export interface PtyHookBridge {
  *      process (proves persistence / no -p).
  *   3. interrupt() ends the in-flight turn (result/abort) without killing the
  *      process; a subsequent turn still works.
- *   4. The emitted SDKMessage shapes are accepted by stream-processor.ts
+ *   4. The emitted EngineEvent shapes are accepted by stream-processor.ts
  *      without throwing (snapshot the CardState transitions).
  */

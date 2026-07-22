@@ -2,7 +2,7 @@ import type { BotConfigBase, CodexReasoningEffort } from '../config.js';
 import type { Logger } from '../utils/logger.js';
 import type { IncomingMessage } from '../types.js';
 import type { IMessageSender } from './message-sender.interface.js';
-import { resolveEngineName, SessionManager } from '../engines/index.js';
+import { getEngineDescriptor, isEngineName, resolveEngineName, SessionManager } from '../engines/index.js';
 import type { EngineName } from '../engines/index.js';
 import type { SessionSummary } from '../engines/claude/session-lister.js';
 import { MemoryClient } from '../memory/memory-client.js';
@@ -647,30 +647,12 @@ export class CommandHandler {
   }
 
   private exampleModelsForEngine(engine: EngineName): string {
-    switch (engine) {
-      case 'claude':
-        return '`claude-fable-5`, `claude-opus-4-8`, `claude-sonnet-4-6`, `claude-haiku-4-5`';
-      case 'kimi':
-        return '`kimi-code/k3`, `kimi-code/kimi-for-coding-highspeed`';
-      case 'codex':
-        return '`gpt-5.6`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`';
-    }
+    return getEngineDescriptor(engine).exampleModels.map((model) => `\`${model}\``).join(', ');
   }
 
   private authTipForEngine(engine: EngineName): string {
-    switch (engine) {
-      case 'claude':
-        return '_Make sure Claude Code is authenticated (`claude login`)._';
-      case 'kimi':
-        return '_Make sure `kimi login` has been completed on this host._';
-      case 'codex':
-        return '_Make sure Codex CLI is authenticated (`codex login`) or configured with an API key._';
-    }
+    return `_${getEngineDescriptor(engine).authTip}_`;
   }
-}
-
-function isEngineName(value: string): value is EngineName {
-  return value === 'claude' || value === 'kimi' || value === 'codex';
 }
 
 function normalizeCodexEffort(value: string): CodexReasoningEffort | 'reset' | undefined {
