@@ -594,6 +594,34 @@ install_kimi_cli() {
   return 1
 }
 
+OPENCODE_REQUIRED_VERSION="1.17.14"
+
+install_opencode_cli() {
+  local installed_version=""
+  if command -v opencode &>/dev/null; then
+    installed_version="$(opencode --version 2>/dev/null | head -1 | tr -d '[:space:]' || true)"
+    if [[ "$installed_version" == "$OPENCODE_REQUIRED_VERSION" ]]; then
+      success "OpenCode found: $(command -v opencode) (v${installed_version})"
+      return 0
+    fi
+    warn "OpenCode ${installed_version:-unknown} is installed; MetaBot requires ${OPENCODE_REQUIRED_VERSION}."
+  fi
+
+  info "Installing OpenCode ${OPENCODE_REQUIRED_VERSION} from npm..."
+  mkdir -p "$HOME/.local"
+  if npm install -g --prefix "$HOME/.local" "opencode-ai@${OPENCODE_REQUIRED_VERSION}" 2>&1 | tail -3; then
+    export PATH="$HOME/.local/bin:$PATH"
+    hash -r
+    installed_version="$(opencode --version 2>/dev/null | head -1 | tr -d '[:space:]' || true)"
+    if [[ "$installed_version" == "$OPENCODE_REQUIRED_VERSION" ]]; then
+      success "OpenCode installed: $(command -v opencode) (v${installed_version})"
+      return 0
+    fi
+  fi
+  warn "OpenCode install verification failed. Install manually: npm install -g opencode-ai@${OPENCODE_REQUIRED_VERSION}"
+  return 1
+}
+
 # Build and start the local personal Core before interactive configuration so
 # a fresh install can securely wire its one-time token into the bridge config.
 PERSONAL_LOCAL_CORE=false
@@ -742,7 +770,8 @@ if [[ "$SKIP_CONFIG" == "false" ]]; then
   echo -e "${BOLD}Agent Engine:${NC}"
   echo "  1) Codex CLI (OpenAI — requires codex login, uses your ChatGPT subscription)"
   echo "  2) Kimi Code (Moonshot AI — requires kimi login, uses your subscription; default model kimi-code/k3)"
-  echo "  3) Claude Code compatibility (Anthropic)"
+  echo "  3) OpenCode Server (multi-provider — requires OpenCode 1.17.14)"
+  echo "  4) Claude Code compatibility (Anthropic)"
   prompt_choice ENGINE_CHOICE "1"
 
   BOT_ENGINE="codex"
@@ -758,6 +787,13 @@ if [[ "$SKIP_CONFIG" == "false" ]]; then
     info "After install, run 'kimi login' in a separate terminal to authenticate."
     # Skip the Claude provider prompt entirely for Kimi — it has its own auth.
     AUTH_CHOICE="kimi"
+  elif [[ "$ENGINE_CHOICE" == "3" ]]; then
+    BOT_ENGINE="opencode"
+    CLAUDE_AUTH_METHOD="opencode"
+    AUTH_CHOICE="opencode"
+    echo ""
+    install_opencode_cli || warn "Continuing with OpenCode configuration; install the exact required version before starting MetaBot."
+    info "Run 'opencode' once to configure a provider before starting MetaBot."
   elif [[ "$ENGINE_CHOICE" == "1" ]]; then
     BOT_ENGINE="codex"
     CLAUDE_AUTH_METHOD="codex"
@@ -791,7 +827,7 @@ if [[ "$SKIP_CONFIG" == "false" ]]; then
   fi
 
   case "$AUTH_CHOICE" in
-    kimi|codex)
+    kimi|codex|opencode)
       : # handled above
       ;;
     1)
@@ -980,6 +1016,11 @@ if [[ "$SKIP_CONFIG" == "false" ]]; then
       echo "#   memories = true"
       echo "#   guardian_approval = true"
       echo "#   prevent_idle_sleep = true"
+    elif [[ "$CLAUDE_AUTH_METHOD" == "opencode" ]]; then
+      echo "# Using OpenCode Server/SDK ${OPENCODE_REQUIRED_VERSION}. Run 'opencode' once to configure a provider."
+      echo "# OPENCODE_EXECUTABLE_PATH=opencode"
+      echo "# OPENCODE_MODEL=openai/gpt-5.6"
+      echo "# OPENCODE_PERMISSION_MODE=ask"
     elif [[ -n "${CLAUDE_AUTH_ENV_LINES:-}" ]]; then
       echo "$CLAUDE_AUTH_ENV_LINES"
     fi
@@ -1038,6 +1079,7 @@ if [[ "$SKIP_CONFIG" == "false" ]]; then
       };
       if (engine === 'kimi') { bot.kimi = { model: 'kimi-code/k3', thinking: true, permissionMode: 'auto' }; }
       if (engine === 'codex') { bot.codex = { approvalPolicy: 'never', sandbox: 'workspace-write' }; }
+      if (engine === 'opencode') { bot.opencode = { permissionMode: 'ask' }; }
       console.log(JSON.stringify([bot], null, 2))
     " "$BOT_NAME" "$FEISHU_APP_ID" "$FEISHU_APP_SECRET" "$WORK_DIR" "${BOT_ENGINE:-claude}")
   fi
@@ -1055,6 +1097,7 @@ if [[ "$SKIP_CONFIG" == "false" ]]; then
       };
       if (engine === 'kimi') { bot.kimi = { model: 'kimi-code/k3', thinking: true, permissionMode: 'auto' }; }
       if (engine === 'codex') { bot.codex = { approvalPolicy: 'never', sandbox: 'workspace-write' }; }
+      if (engine === 'opencode') { bot.opencode = { permissionMode: 'ask' }; }
       console.log(JSON.stringify([bot], null, 2))
     " "$TG_NAME" "$TELEGRAM_BOT_TOKEN" "$WORK_DIR" "${BOT_ENGINE:-claude}")
   fi
@@ -1072,6 +1115,7 @@ if [[ "$SKIP_CONFIG" == "false" ]]; then
       };
       if (engine === 'kimi') { bot.kimi = { model: 'kimi-code/k3', thinking: true, permissionMode: 'auto' }; }
       if (engine === 'codex') { bot.codex = { approvalPolicy: 'never', sandbox: 'workspace-write' }; }
+      if (engine === 'opencode') { bot.opencode = { permissionMode: 'ask' }; }
       console.log(JSON.stringify([bot], null, 2))
     " "$WX_NAME" "$WORK_DIR" "${BOT_ENGINE:-claude}")
   fi
@@ -1560,6 +1604,10 @@ if [[ "${SKIP_CONFIG}" == "false" ]]; then
       STEP_NUM=$((STEP_NUM + 1))
     fi
     echo "    ${STEP_NUM}. Run 'codex login' in a separate terminal (or set OPENAI_API_KEY / configure ~/.codex/config.toml)"
+    STEP_NUM=$((STEP_NUM + 1))
+  fi
+  if [[ "${CLAUDE_AUTH_METHOD}" == "opencode" ]]; then
+    echo "    ${STEP_NUM}. Run 'opencode' once and configure the provider MetaBot should use"
     STEP_NUM=$((STEP_NUM + 1))
   fi
   if [[ "$SETUP_FEISHU" == "true" ]]; then

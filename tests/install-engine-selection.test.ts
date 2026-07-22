@@ -91,5 +91,14 @@ describe('interactive installer engine selection', () => {
       expect(bot.codex).toEqual({ approvalPolicy: 'never', sandbox: 'workspace-write' });
       expect(bot.kimi).toBeUndefined();
     });
+
+    it(`${platform.name} preserves OpenCode safety defaults`, () => {
+      const bot = generateBot(platform.generator, platform.args, 'opencode');
+
+      expect(bot.engine).toBe('opencode');
+      expect(bot.opencode).toEqual({ permissionMode: 'ask' });
+      expect(bot.kimi).toBeUndefined();
+      expect(bot.codex).toBeUndefined();
+    });
   }
 });

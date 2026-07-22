@@ -3,7 +3,7 @@ import { jsonResponse, parseJsonBody } from './helpers.js';
 import type { RouteContext } from './types.js';
 import type { ApiTaskResult } from '../../bridge/message-bridge.js';
 import type { OutputFile } from '../../bridge/outputs-manager.js';
-import type { EngineName } from '../../engines/index.js';
+import { isEngineName, type EngineName } from '../../engines/index.js';
 import type { CardState, PendingQuestion } from '../../types.js';
 import { resolveSTTProvider, resolveTTSProvider, resolveTTSVoice } from '../voice-handler.js';
 
@@ -94,7 +94,7 @@ function asStringArray(value: unknown): string[] | undefined {
 }
 
 function asEngineName(value: unknown): EngineName | undefined {
-  return value === 'claude' || value === 'kimi' || value === 'codex' ? value : undefined;
+  return isEngineName(value) ? value : undefined;
 }
 
 function sanitizeChatIdPart(value: string): string {

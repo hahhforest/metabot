@@ -1,10 +1,9 @@
 import type { BotConfigBase } from '../config.js';
 import type { CodexReasoningEffort } from '../config.js';
-import type { EngineName, ExecutionHandle, SessionManager } from '../engines/index.js';
-import { resolveEngineName } from '../engines/index.js';
+import type { EngineName, EngineSessionSummary, ExecutionHandle, SessionManager } from '../engines/index.js';
+import { getEngineDescriptor, resolveEngineName } from '../engines/index.js';
 import type { IncomingMessage, CardState, PendingQuestion } from '../types.js';
 import type { Logger } from '../utils/logger.js';
-import type { SessionSummary } from '../engines/claude/session-lister.js';
 import type { IMessageSender } from './message-sender.interface.js';
 import type { OutputsManager } from './outputs-manager.js';
 
@@ -39,7 +38,7 @@ export class SlashPickerController {
       sender: IMessageSender;
       sessionManager: SessionManager;
       outputsManager: OutputsManager;
-      listSessionsForChat: (chatId: string) => SessionSummary[] | Promise<SessionSummary[]>;
+      listSessionsForChat: (chatId: string) => EngineSessionSummary[] | Promise<EngineSessionSummary[]>;
       applyResume: (chatId: string, sessionId: string) => Promise<void>;
       finalizeQuestionCard: (messageId: string, state: CardState) => Promise<void>;
       handleMessage: (msg: IncomingMessage) => Promise<void>;
@@ -201,11 +200,11 @@ export class SlashPickerController {
     const { chatId } = msg;
     const session = this.deps.sessionManager.getSession(chatId);
     const activeEngine = session.engine ?? resolveEngineName(this.deps.config);
-    if (activeEngine !== 'claude' && activeEngine !== 'codex' && activeEngine !== 'kimi') {
+    if (!getEngineDescriptor(activeEngine).capabilities.sessions) {
       await this.deps.sender.sendTextNotice(
         chatId,
         'ℹ️ /resume Unsupported',
-        `This chat is on the \`${activeEngine}\` engine. Session resume is available for Claude, Codex, and Kimi.`,
+        `The \`${activeEngine}\` engine does not expose resumable sessions.`,
         'blue',
       );
       return true;

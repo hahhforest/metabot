@@ -93,7 +93,7 @@ Subcommands:
   watch <team> [--interval <sec>] [--count <n>] [--summary|--plain]
 
   agents list <team>
-  agents spawn <team> <name> [--role <role>] [--engine claude|codex|kimi] [--prompt <text>]
+  agents spawn <team> <name> [--role <role>] [--engine claude|codex|kimi|opencode] [--prompt <text>]
   agents stop <team> <name>
   agents delete <team> <name>
 

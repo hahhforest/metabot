@@ -2,6 +2,7 @@ import type * as http from 'node:http';
 import { jsonResponse, parseJsonBody } from './helpers.js';
 import type { RouteContext } from './types.js';
 import type { AgentStatus, RunStatus, TaskStatus } from '../../agent-teams/team-store.js';
+import { isEngineName, type EngineName } from '../../engines/index.js';
 
 export async function handleAgentTeamRoutes(
   ctx: RouteContext,
@@ -255,8 +256,8 @@ function stringArrayField(value: unknown): string[] | undefined {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0).map((v) => v.trim()) : undefined;
 }
 
-function engineField(value: unknown): 'claude' | 'codex' | 'kimi' | undefined {
-  return value === 'claude' || value === 'codex' || value === 'kimi' ? value : undefined;
+function engineField(value: unknown): EngineName | undefined {
+  return isEngineName(value) ? value : undefined;
 }
 
 function taskStatusField(value: unknown): TaskStatus | undefined {

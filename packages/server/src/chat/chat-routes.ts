@@ -322,8 +322,8 @@ function postMessageUnchecked(
   };
 }
 
-function parseEngine(value: unknown): 'claude' | 'kimi' | 'codex' | undefined {
-  return value === 'claude' || value === 'kimi' || value === 'codex' ? value : undefined;
+function parseEngine(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 function parseMentionedAgentRefs(content: string, agentRefs: string[]): string[] {

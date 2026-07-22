@@ -3,7 +3,7 @@ import type * as http from 'node:http';
 import { addBot, removeBot, updateBot, getBotEntry, addPeer, removePeer } from '../bots-config-writer.js';
 import { installSkillsToWorkDir } from '../skills-installer.js';
 import { webBotFromJson } from '../../config.js';
-import { resolveEngineName } from '../../engines/index.js';
+import { isEngineName, resolveEngineName } from '../../engines/index.js';
 import { NullSender } from '../../web/null-sender.js';
 import { MessageBridge } from '../../bridge/message-bridge.js';
 import { jsonResponse, parseJsonBody } from './helpers.js';
@@ -144,6 +144,10 @@ export async function handleBotRoutes(
       jsonResponse(res, 400, { error: 'platform must be "feishu", "telegram", or "web"' });
       return true;
     }
+    if (body.engine !== undefined && !isEngineName(body.engine)) {
+      jsonResponse(res, 400, { error: 'engine must be one of: claude, kimi, codex, opencode' });
+      return true;
+    }
 
     let entry: Record<string, unknown>;
     if (platform === 'feishu') {
@@ -159,6 +163,7 @@ export async function handleBotRoutes(
         ...(body.engine ? { engine: body.engine } : {}),
         ...(body.codex ? { codex: body.codex } : {}),
         ...(body.kimi ? { kimi: body.kimi } : {}),
+        ...(body.opencode ? { opencode: body.opencode } : {}),
         feishuAppId: appId, feishuAppSecret: appSecret, defaultWorkingDirectory: workDir,
         ...(body.maxTurns ? { maxTurns: body.maxTurns } : {}),
         ...(body.maxBudgetUsd ? { maxBudgetUsd: body.maxBudgetUsd } : {}),
@@ -176,6 +181,7 @@ export async function handleBotRoutes(
         ...(body.engine ? { engine: body.engine } : {}),
         ...(body.codex ? { codex: body.codex } : {}),
         ...(body.kimi ? { kimi: body.kimi } : {}),
+        ...(body.opencode ? { opencode: body.opencode } : {}),
         telegramBotToken: token, defaultWorkingDirectory: workDir,
         ...(body.maxTurns ? { maxTurns: body.maxTurns } : {}),
         ...(body.maxBudgetUsd ? { maxBudgetUsd: body.maxBudgetUsd } : {}),
@@ -192,6 +198,7 @@ export async function handleBotRoutes(
         ...(body.engine ? { engine: body.engine } : {}),
         ...(body.codex ? { codex: body.codex } : {}),
         ...(body.kimi ? { kimi: body.kimi } : {}),
+        ...(body.opencode ? { opencode: body.opencode } : {}),
         defaultWorkingDirectory: workDir,
         ...(body.maxTurns ? { maxTurns: body.maxTurns } : {}),
         ...(body.maxBudgetUsd ? { maxBudgetUsd: body.maxBudgetUsd } : {}),
@@ -331,5 +338,7 @@ function defaultModelForConfig(config: import('../../config.js').BotConfigBase):
       return config.kimi?.model;
     case 'codex':
       return config.codex?.model || config.codex?.displayModel;
+    case 'opencode':
+      return config.opencode?.model;
   }
 }

@@ -41,6 +41,14 @@ version_at_least v23.0.0 22.19.0
     }
   });
 
+  it('pins the OpenCode CLI to the SDK-compatible runtime on both platforms', () => {
+    for (const source of [SH_SOURCE, PS_SOURCE]) {
+      expect(source).toContain('opencode-ai@');
+      expect(source).toContain('1.17.14');
+      expect(source).toContain('permissionMode');
+    }
+  });
+
   it('installs MetaBot Skills globally and retires project mirrors', () => {
     expect(SH_SOURCE).toContain('AGENTS_SKILLS_DIR="$HOME/.agents/skills"');
     expect(SH_SOURCE).toContain('AGENTS_SKILLS_DEST="$DEPLOY_WORK_DIR/.agents/skills"');

@@ -18,18 +18,20 @@ import { formatAbsolute, formatRelative } from '../lib/format';
 import { renderMarkdown } from '../lib/render-markdown';
 
 const REFRESH_MS = 1_200;
-type ChatEngine = 'claude' | 'kimi' | 'codex';
+type ChatEngine = 'claude' | 'kimi' | 'codex' | 'opencode';
 
 const ENGINE_OPTIONS: Array<{ value: ChatEngine; label: string; defaultModel: string }> = [
   { value: 'claude', label: 'Claude', defaultModel: '' },
   { value: 'codex', label: 'Codex', defaultModel: '' },
   { value: 'kimi', label: 'Kimi', defaultModel: '' },
+  { value: 'opencode', label: 'OpenCode', defaultModel: '' },
 ];
 
 const COMMON_MODELS: Record<ChatEngine, string[]> = {
   claude: ['', 'claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-4-6'],
   codex: ['', 'gpt-5.5', 'gpt-5.5-codex', 'gpt-5.2-codex'],
   kimi: ['', 'kimi-for-coding', 'kimi-k2'],
+  opencode: ['', 'openai/gpt-5.6', 'anthropic/claude-sonnet-4-6', 'google/gemini-3.1-pro'],
 };
 
 interface TimelineRun {
@@ -149,7 +151,7 @@ function loadModelChoice(conversationId: string): { engine: ChatEngine; model: s
     const raw = window.localStorage.getItem(modelStorageKey(conversationId));
     if (!raw) return { engine: 'codex', model: '' };
     const parsed = JSON.parse(raw) as { engine?: string; model?: string };
-    const engine = parsed.engine === 'codex' || parsed.engine === 'kimi' || parsed.engine === 'claude'
+    const engine = parsed.engine === 'codex' || parsed.engine === 'kimi' || parsed.engine === 'claude' || parsed.engine === 'opencode'
       ? parsed.engine
       : 'codex';
     return { engine, model: typeof parsed.model === 'string' ? parsed.model : '' };
@@ -169,7 +171,7 @@ function parseModelCommand(content: string): { engine?: ChatEngine; model?: stri
   if (!arg || arg === 'list') return {};
   const normalized = arg.toLowerCase();
   if (normalized === 'reset' || normalized === 'clear' || normalized === 'default') return { reset: true };
-  if (normalized === 'claude' || normalized === 'kimi' || normalized === 'codex') return { engine: normalized };
+  if (normalized === 'claude' || normalized === 'kimi' || normalized === 'codex' || normalized === 'opencode') return { engine: normalized };
   return { model: arg.split(/\s+/)[0] };
 }
 

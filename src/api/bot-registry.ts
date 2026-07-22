@@ -134,5 +134,7 @@ function defaultModelForEngine(config: BotConfigBase): string | undefined {
       return config.kimi?.model;
     case 'codex':
       return config.codex?.model || config.codex?.displayModel;
+    case 'opencode':
+      return config.opencode?.model;
   }
 }

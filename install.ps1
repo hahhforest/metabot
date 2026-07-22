@@ -247,6 +247,36 @@ function Install-KimiCode {
     return $false
 }
 
+function Install-OpenCode {
+    $requiredVersion = "1.17.14"
+    $installedVersion = $null
+    if (Test-Command "opencode") {
+        try { $installedVersion = ((& opencode --version 2>$null) | Select-Object -First 1).ToString().Trim() } catch {}
+    }
+    if ($installedVersion -eq $requiredVersion) {
+        Write-Success "OpenCode found: $((Get-Command opencode).Source) (v$installedVersion)"
+        return $true
+    }
+    if ($installedVersion) { Write-Warn "OpenCode $installedVersion is installed; MetaBot requires $requiredVersion." }
+    Write-Info "Installing OpenCode $requiredVersion from npm..."
+    try {
+        & npm install -g "opencode-ai@$requiredVersion" | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "npm exited with code $LASTEXITCODE" }
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+    } catch {
+        Write-Warn "OpenCode install failed: $($_.Exception.Message)"
+    }
+    if (Test-Command "opencode") {
+        try { $installedVersion = ((& opencode --version 2>$null) | Select-Object -First 1).ToString().Trim() } catch {}
+    }
+    if ($installedVersion -eq $requiredVersion) {
+        Write-Success "OpenCode installed: $((Get-Command opencode).Source) (v$installedVersion)"
+        return $true
+    }
+    Write-Warn "OpenCode verification failed. Install manually with 'npm install -g opencode-ai@$requiredVersion'."
+    return $false
+}
+
 # ============================================================================
 # Phase 0: Banner + environment detection
 # ============================================================================
@@ -505,7 +535,8 @@ if (-not $SkipConfig) {
     Write-Host "Agent Engine:" -ForegroundColor White
     Write-Host "  1) Codex CLI (OpenAI)"
     Write-Host "  2) Kimi Code (Moonshot AI - default model kimi-code/k3)"
-    Write-Host "  3) Claude Code compatibility (Anthropic)"
+    Write-Host "  3) OpenCode Server (multi-provider - requires OpenCode 1.17.14)"
+    Write-Host "  4) Claude Code compatibility (Anthropic)"
     $EngineChoice = Read-Choice "1"
 
     $BotEngine = "codex"
@@ -520,6 +551,14 @@ if (-not $SkipConfig) {
             Write-Warn "Continuing with Kimi configuration; install Kimi Code 0.27+ before starting MetaBot."
         }
         Write-Info "Run 'kimi login' before starting MetaBot. MetaBot defaults Kimi sessions to kimi-code/k3."
+    } elseif ($EngineChoice -eq "3") {
+        $BotEngine = "opencode"
+        $ClaudeAuthMethod = "opencode"
+        $AuthChoice = "opencode"
+        if (-not (Install-OpenCode)) {
+            Write-Warn "Continuing with OpenCode configuration; install version 1.17.14 before starting MetaBot."
+        }
+        Write-Info "Run 'opencode' once to configure a provider before starting MetaBot."
     } elseif ($EngineChoice -eq "1") {
         $BotEngine = "codex"
         $ClaudeAuthMethod = "codex"
@@ -691,6 +730,9 @@ API_SECRET=$ApiSecret
         $envContent += "`n# Using Kimi Code 0.27+ (default model: kimi-code/k3). Run 'kimi login' to authenticate."
     } elseif ($ClaudeAuthMethod -eq "codex") {
         $envContent += "`n# Using Codex CLI. Run 'codex login' to authenticate."
+    } elseif ($ClaudeAuthMethod -eq "opencode") {
+        $envContent += "`n# Using OpenCode Server/SDK 1.17.14. Run 'opencode' once to configure a provider."
+        $envContent += "`n# OPENCODE_EXECUTABLE_PATH=opencode`n# OPENCODE_MODEL=openai/gpt-5.6`n# OPENCODE_PERMISSION_MODE=ask"
     } elseif ($ClaudeAuthEnvLines) {
         $envContent += "`n$ClaudeAuthEnvLines"
     }
@@ -724,14 +766,14 @@ METABOT_CORE_URL=$CoreUrl
     $TelegramBotsJson = "[]"
 
     if ($SetupFeishu) {
-        $FeishuBotsJson = node -e "const e=process.argv[5];const b={name:process.argv[1],engine:e,feishuAppId:process.argv[2],feishuAppSecret:process.argv[3],defaultWorkingDirectory:process.argv[4]};if(e==='kimi')b.kimi={model:'kimi-code/k3',thinking:true,permissionMode:'auto'};if(e==='codex')b.codex={approvalPolicy:'never',sandbox:'workspace-write'};console.log(JSON.stringify([b],null,2))" $BotName $FeishuAppId $FeishuAppSecret $WorkDir $BotEngine
+        $FeishuBotsJson = node -e "const e=process.argv[5];const b={name:process.argv[1],engine:e,feishuAppId:process.argv[2],feishuAppSecret:process.argv[3],defaultWorkingDirectory:process.argv[4]};if(e==='kimi')b.kimi={model:'kimi-code/k3',thinking:true,permissionMode:'auto'};if(e==='codex')b.codex={approvalPolicy:'never',sandbox:'workspace-write'};if(e==='opencode')b.opencode={permissionMode:'ask'};console.log(JSON.stringify([b],null,2))" $BotName $FeishuAppId $FeishuAppSecret $WorkDir $BotEngine
         $FeishuBotsJson = $FeishuBotsJson -join "`n"
     }
 
     if ($SetupTelegram) {
         $TgName = $BotName
         if ($SetupFeishu) { $TgName = "$BotName-telegram" }
-        $TelegramBotsJson = node -e "const e=process.argv[4];const b={name:process.argv[1],engine:e,telegramBotToken:process.argv[2],defaultWorkingDirectory:process.argv[3]};if(e==='kimi')b.kimi={model:'kimi-code/k3',thinking:true,permissionMode:'auto'};if(e==='codex')b.codex={approvalPolicy:'never',sandbox:'workspace-write'};console.log(JSON.stringify([b],null,2))" $TgName $TelegramBotToken $WorkDir $BotEngine
+        $TelegramBotsJson = node -e "const e=process.argv[4];const b={name:process.argv[1],engine:e,telegramBotToken:process.argv[2],defaultWorkingDirectory:process.argv[3]};if(e==='kimi')b.kimi={model:'kimi-code/k3',thinking:true,permissionMode:'auto'};if(e==='codex')b.codex={approvalPolicy:'never',sandbox:'workspace-write'};if(e==='opencode')b.opencode={permissionMode:'ask'};console.log(JSON.stringify([b],null,2))" $TgName $TelegramBotToken $WorkDir $BotEngine
         $TelegramBotsJson = $TelegramBotsJson -join "`n"
     }
 
@@ -1044,6 +1086,10 @@ if (-not $SkipConfig) {
     }
     if ($ClaudeAuthMethod -eq "codex") {
         Write-Host "    $StepNum. Run 'codex login' in a separate terminal"
+        $StepNum++
+    }
+    if ($ClaudeAuthMethod -eq "opencode") {
+        Write-Host "    $StepNum. Run 'opencode' once and configure the provider MetaBot should use"
         $StepNum++
     }
     if ($SetupFeishu) {

@@ -2,9 +2,8 @@ import type { BotConfigBase, CodexReasoningEffort } from '../config.js';
 import type { Logger } from '../utils/logger.js';
 import type { IncomingMessage } from '../types.js';
 import type { IMessageSender } from './message-sender.interface.js';
-import { getEngineDescriptor, isEngineName, resolveEngineName, SessionManager } from '../engines/index.js';
-import type { EngineName } from '../engines/index.js';
-import type { SessionSummary } from '../engines/claude/session-lister.js';
+import { ENGINE_NAMES, getEngineDescriptor, isEngineName, resolveEngineName, SessionManager } from '../engines/index.js';
+import type { EngineName, EngineSessionSummary } from '../engines/index.js';
 import { MemoryClient } from '../memory/memory-client.js';
 import { AuditLogger } from '../utils/audit-logger.js';
 import type { DocSync } from '../sync/doc-sync.js';
@@ -40,7 +39,7 @@ export class CommandHandler {
      * List the recent sessions for this chat's active engine and working directory
      * (newest first). Backs the direct `/resume <id>` form. Read-only.
      */
-    private listSessions: (chatId: string) => SessionSummary[] | Promise<SessionSummary[]>,
+    private listSessions: (chatId: string) => EngineSessionSummary[] | Promise<EngineSessionSummary[]>,
     /**
      * Swap the chat into a previous engine session: re-point the sessionId,
      * reset usage counters, release the persistent executor so the next turn
@@ -72,10 +71,10 @@ export class CommandHandler {
           '`/stop` - Abort current running task',
           '`/status` - Show current session info',
           '`/model` - Show current engine/model; `/model list` - Available options',
-          '`/model claude`, `/model kimi`, or `/model codex` - Switch engine (resets session)',
+          `\`${this.engineSwitchUsage()}\` - Switch engine (resets session)`,
           '`/model <name>` - Set model for current engine',
           '`/effort low|medium|high|xhigh|max|ultra` - Set Codex reasoning effort for this chat',
-          '`/resume` - List & switch to a previous Claude/Codex/Kimi session',
+          '`/resume` - List & switch to a previous engine-native session',
           '`/resume <id>` - Resume a session directly by id prefix',
           '`/memory` - Memory document commands',
           '`@Bot /group-reply mention|all|status` - Feishu group reply mode (scoped to this Agent and group)',
@@ -350,7 +349,7 @@ export class CommandHandler {
         '',
         'Usage:',
         '- `/model list` — Show available engines + models',
-        '- `/model claude`, `/model kimi`, or `/model codex` — Switch engine (resets session)',
+        `- \`${this.engineSwitchUsage()}\` — Switch engine (resets session)`,
         `- \`/model <name>\` — Set session model (e.g. ${exampleModels})`,
         '- `/model reset` — Clear overrides, use bot defaults',
       ];
@@ -370,7 +369,7 @@ export class CommandHandler {
       return;
     }
 
-    // Engine switch — /model claude, /model kimi, or /model codex
+    // Engine switch — names come from the central engine registry.
     if (isEngineName(normalized)) {
       if (activeEngine === normalized) {
         await this.sender.sendTextNotice(
@@ -399,57 +398,22 @@ export class CommandHandler {
     // List available models
     if (normalized === 'list' || normalized === 'ls') {
       const active = session.model || botDefault;
-      const claudeModels = [
-        { id: 'claude-fable-5', label: 'Fable 5', note: 'Latest Claude Code model · 1M context · 128k max output · adaptive thinking' },
-        { id: 'claude-opus-4-8', label: 'Opus 4.8', note: 'High-capability legacy default · 200k context · 128k max output' },
-        { id: 'claude-opus-4-8[1m]', label: 'Opus 4.8 (1M)', note: '1M context window' },
-        { id: 'claude-opus-4-7', label: 'Opus 4.7', note: '200k context' },
-        { id: 'claude-opus-4-7[1m]', label: 'Opus 4.7 (1M)', note: '1M context window' },
-        { id: 'claude-opus-4-6', label: 'Opus 4.6', note: '200k context' },
-        { id: 'claude-opus-4-6[1m]', label: 'Opus 4.6 (1M)', note: '1M context window' },
-        { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', note: 'Balanced · 200k context' },
-        { id: 'claude-sonnet-4-6[1m]', label: 'Sonnet 4.6 (1M)', note: '1M context window' },
-        { id: 'claude-haiku-4-5', label: 'Haiku 4.5', note: 'Fastest · 200k context' },
-      ];
-      const kimiModels = [
-        { id: 'kimi-code/k3', label: 'Kimi K3', note: 'Current Kimi Code subscription model' },
-        { id: 'kimi-code/kimi-for-coding-highspeed', label: 'Kimi for Coding Highspeed', note: 'Low-latency coding model when enabled for your account' },
-      ];
-      const codexModels = [
-        { id: 'gpt-5.6', label: 'GPT 5.6', note: 'General GPT-5.6 Codex model' },
-        { id: 'gpt-5.6-sol', label: 'GPT 5.6 Sol', note: 'Flagship GPT-5.6 capability model' },
-        { id: 'gpt-5.6-terra', label: 'GPT 5.6 Terra', note: 'Stronger speed/cost balance for Codex workers' },
-        { id: 'gpt-5.6-luna', label: 'GPT 5.6 Luna', note: 'Efficient high-volume Codex workloads' },
-        { id: 'gpt-5.5', label: 'GPT 5.5', note: 'Legacy Codex model' },
-        { id: 'gpt-5.5-codex', label: 'GPT 5.5 Codex', note: 'Legacy Codex coding model, when available in your account' },
-        { id: 'gpt-5.2-codex', label: 'GPT-5.2 Codex', note: 'Legacy Codex coding model' },
-      ];
-      const models = activeEngine === 'kimi' ? kimiModels : activeEngine === 'codex' ? codexModels : claudeModels;
-      const header = activeEngine === 'kimi'
-        ? '**Available Kimi models:**'
-        : activeEngine === 'codex'
-          ? '**Common Codex models:**'
-          : '**Available Claude models:**';
+      const descriptor = getEngineDescriptor(activeEngine);
       const lines = [
         `**Current engine:** \`${activeEngine}\`${session.engine ? ' (session override)' : ''}`,
         '',
-        '**Engines:** `/model claude`, `/model kimi`, or `/model codex` to switch.',
+        `**Engines:** \`${this.engineSwitchUsage()}\` to switch.`,
         '',
-        header,
+        `**Common ${descriptor.displayName} models:**`,
         '',
       ];
-      for (const m of models) {
-        const marker = m.id === active ? ' ✅' : '';
-        lines.push(`- \`${m.id}\` — ${m.label} · ${m.note}${marker}`);
+      for (const model of descriptor.exampleModels) {
+        const marker = model === active ? ' ✅' : '';
+        const description = descriptor.modelDescriptions?.[model];
+        lines.push(`- \`${model}\`${description ? ` — ${description}` : ''}${marker}`);
       }
       lines.push('');
-      if (activeEngine === 'claude') {
-        lines.push('_Tip: Fable 5 uses its native 1M context. For Opus/Sonnet, append `[1m]` to enable the 1M context window._');
-      } else if (activeEngine === 'codex') {
-        lines.push('_Tip: leave unset to use the Codex CLI default from `~/.codex/config.toml`._');
-      } else {
-        lines.push('_Tip: leave unset to use the Kimi Code Server default (recommended for subscription users)._');
-      }
+      lines.push(`_${descriptor.authTip}_`);
       lines.push('Use `/model <name>` to set the model for the current engine.');
       await this.sender.sendTextNotice(chatId, '🤖 Available Models', lines.join('\n'));
       return;
@@ -554,18 +518,18 @@ export class CommandHandler {
    * the bridge picker before reaching here; we keep a usage notice as a
    * defensive fallback.
    *
-   * Supported for Claude, Codex, and Kimi, and refused
+   * Supported for engines that declare native sessions, and refused
    * while a turn is running (the swap would race the in-flight executor).
    */
   private async handleResumeCommand(msg: IncomingMessage, arg: string): Promise<void> {
     const { chatId } = msg;
     const session = this.sessionManager.getSession(chatId);
     const activeEngine = session.engine ?? resolveEngineName(this.config);
-    if (activeEngine !== 'claude' && activeEngine !== 'codex' && activeEngine !== 'kimi') {
+    if (!getEngineDescriptor(activeEngine).capabilities.sessions) {
       await this.sender.sendTextNotice(
         chatId,
         '❌ /resume Unsupported',
-        `This chat is on the \`${activeEngine}\` engine. Session resume is available for Claude, Codex, and Kimi.`,
+        `The \`${activeEngine}\` engine does not expose resumable sessions.`,
         'red',
       );
       return;
@@ -643,6 +607,8 @@ export class CommandHandler {
         return this.config.kimi?.model;
       case 'codex':
         return this.config.codex?.model || this.config.codex?.displayModel;
+      case 'opencode':
+        return this.config.opencode?.model;
     }
   }
 
@@ -652,6 +618,10 @@ export class CommandHandler {
 
   private authTipForEngine(engine: EngineName): string {
     return `_${getEngineDescriptor(engine).authTip}_`;
+  }
+
+  private engineSwitchUsage(): string {
+    return ENGINE_NAMES.map((engine) => `/model ${engine}`).join(' | ');
   }
 }
 

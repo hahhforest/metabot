@@ -43,6 +43,7 @@ describe('engine registry', () => {
     expect(isEngineName('claude')).toBe(true);
     expect(isEngineName('kimi')).toBe(true);
     expect(isEngineName('codex')).toBe(true);
+    expect(isEngineName('opencode')).toBe(true);
     expect(isEngineName('unknown')).toBe(false);
   });
 
@@ -65,4 +66,3 @@ describe('engine registry', () => {
     }
   });
 });
-

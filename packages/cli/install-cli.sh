@@ -9,10 +9,10 @@
 # Installs:
 #   - `metabot` on PATH (npm global or ~/.local fallback)
 #   - $HOME/.metabot-core/token (chmod 600) if METABOT_CORE_TOKEN was set
-#   - user-global Claude, Codex, and Kimi/Agent Skill discovery paths
+#   - user-global Claude, Codex, and shared Agent Skill discovery paths
 #
 # Engine selection:
-#   --engine claude|codex|both       which skill path(s) to populate
+#   --engine claude|codex|kimi|opencode|all|both  which skill path(s) to populate
 #   METABOT_CLI_ENGINE=…             env equivalent; flag wins
 # Default: both. The complete bundled Skill is copied to every supported
 # user-global discovery root; existing custom copies are backed up outside
@@ -50,9 +50,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$ENGINE" in
-  claude|codex|kimi|all|both) ;;
+  claude|codex|kimi|opencode|all|both) ;;
   *)
-    printf 'error: --engine must be claude|codex|kimi|all|both (got %q)\n' "$ENGINE" >&2
+    printf 'error: --engine must be claude|codex|kimi|opencode|all|both (got %q)\n' "$ENGINE" >&2
     exit 1
     ;;
 esac
@@ -178,13 +178,13 @@ install_skill_to() {
   info "installed /metabot skill → $dst"
 }
 
-if [[ "$ENGINE" == "claude" || "$ENGINE" == "both" ]]; then
+if [[ "$ENGINE" == "claude" || "$ENGINE" == "all" || "$ENGINE" == "both" ]]; then
   install_skill_to "$HOME/.claude/skills/metabot"
 fi
 if [[ "$ENGINE" == "codex" || "$ENGINE" == "all" || "$ENGINE" == "both" ]]; then
   install_skill_to "$HOME/.codex/skills/metabot"
 fi
-if [[ "$ENGINE" == "kimi" || "$ENGINE" == "all" || "$ENGINE" == "both" ]]; then
+if [[ "$ENGINE" == "kimi" || "$ENGINE" == "opencode" || "$ENGINE" == "all" || "$ENGINE" == "both" ]]; then
   install_skill_to "$HOME/.agents/skills/metabot"
 fi
 
@@ -236,5 +236,6 @@ case "$ENGINE" in
   claude) echo "Engine: claude  (skill at ~/.claude/skills/metabot)" ;;
   codex)  echo "Engine: codex   (skill at ~/.codex/skills/metabot)"  ;;
   kimi)   echo "Engine: kimi    (skill at ~/.agents/skills/metabot)" ;;
+  opencode) echo "Engine: opencode (skill at ~/.agents/skills/metabot)" ;;
   all|both) echo "Engine: all     (skill in Claude, Codex, and Agent discovery roots)" ;;
 esac
