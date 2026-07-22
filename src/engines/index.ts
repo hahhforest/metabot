@@ -66,11 +66,8 @@ export {
 } from './claude/index.js';
 export type {
   UserSession,
-  ExecutionHandle,
-  ExecutorOptions,
-  ApiContext,
   DetectedTool,
-  TeamEvent,
 } from './claude/index.js';
+export type { ExecutionHandle, ExecutorOptions, ApiContext, TeamEvent } from './execution.js';
 export type { EngineEvent } from './protocol.js';
 export type { EngineSessionSummary, ListEngineSessionsOptions } from './session.js';

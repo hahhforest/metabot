@@ -1,7 +1,7 @@
 import type { BotConfigBase } from '../../config.js';
 import type { Logger } from '../../utils/logger.js';
 import { buildMetaBotApiPromptContext } from '../prompt-context.js';
-import type { ApiContext, ExecutionHandle, ExecutorOptions } from '../claude/executor.js';
+import type { ApiContext, ExecutionHandle, ExecutorOptions } from '../execution.js';
 import type { EngineEvent } from '../protocol.js';
 import {
   KimiDaemonClient,

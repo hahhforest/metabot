@@ -326,7 +326,7 @@ export interface CodexJsonConfig {
 }
 
 /** OpenCode-specific overrides in bots.json. */
-export interface OpenCodeJsonConfig extends OpenCodeBotConfig {}
+export type OpenCodeJsonConfig = OpenCodeBotConfig;
 
 /** Fields shared across all bot JSON entries (engine selection and engine overrides). */
 interface EngineJsonFields {

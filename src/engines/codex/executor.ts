@@ -5,12 +5,8 @@ import path from 'node:path';
 import type { BotConfigBase, CodexBotConfig, CodexReasoningEffort } from '../../config.js';
 import type { Logger } from '../../utils/logger.js';
 import { AsyncQueue } from '../../utils/async-queue.js';
-import type {
-  ApiContext,
-  ExecutionHandle,
-  ExecutorOptions,
-} from '../claude/executor.js';
 import { buildMetaBotApiPromptContext } from '../prompt-context.js';
+import type { ApiContext, ExecutionHandle, ExecutorOptions } from '../execution.js';
 import type { EngineEvent } from '../protocol.js';
 import {
   createCodexTranslatorState,

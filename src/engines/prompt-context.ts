@@ -1,8 +1,10 @@
+import type { EngineName } from './names.js';
+
 export interface ApiContext {
   botName: string;
   chatId: string;
   /** Session-level engine selected for this chat. */
-  engine?: 'claude' | 'kimi' | 'codex';
+  engine?: EngineName;
   /** Current engine session id when one already exists; diagnostic only. */
   sessionId?: string;
   /** Compact current Team roster and dispatch hint; never includes task/message/run history. */

@@ -26,7 +26,7 @@
 
 import { EventEmitter } from 'node:events';
 import type { Logger } from '../../utils/logger.js';
-import type { TeamEvent, ApiContext } from './executor.js';
+import type { TeamEvent, ApiContext } from '../execution.js';
 import {
   PersistentClaudeExecutor,
   type PersistentExecutorOptions,

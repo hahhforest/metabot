@@ -5,15 +5,12 @@ import path from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKUserMessage, SpawnOptions, SpawnedProcess } from '@anthropic-ai/claude-agent-sdk';
 import type { BotConfigBase } from '../../config.js';
-import type { CodexReasoningEffort } from '../../config.js';
 import type { Logger } from '../../utils/logger.js';
 import { AsyncQueue } from '../../utils/async-queue.js';
 import { buildMetaBotApiPromptContext } from '../prompt-context.js';
-import type { ApiContext } from '../prompt-context.js';
+import type { ApiContext, ExecutionHandle, ExecutorOptions, TeamEvent } from '../execution.js';
 import type { EngineEvent } from '../protocol.js';
 import { makeCanUseTool } from './exit-plan-mode.js';
-
-export type { ApiContext } from '../prompt-context.js';
 
 const isWindows = process.platform === 'win32';
 
@@ -218,65 +215,6 @@ export function apply1MContextSettings(queryOptions: Record<string, unknown>): v
       CLAUDE_CODE_AUTO_COMPACT_WINDOW: DEFAULT_AUTO_COMPACT_WINDOW,
     };
   }
-}
-
-/**
- * Events surfaced by Claude Code's experimental Agent Teams hooks
- * (TaskCreated / TaskCompleted / TeammateIdle). Used to drive the
- * Feishu / Web team panel without requiring the user to switch panes.
- */
-export type TeamEvent =
-  | {
-      kind: 'task_created';
-      taskId: string;
-      subject: string;
-      description?: string;
-      teammate?: string;
-      teamName?: string;
-    }
-  | {
-      kind: 'task_completed';
-      taskId: string;
-      subject: string;
-      teammate?: string;
-      teamName?: string;
-    }
-  | {
-      kind: 'teammate_idle';
-      teammate: string;
-      teamName: string;
-    };
-
-export interface ExecutorOptions {
-  prompt: string;
-  cwd: string;
-  sessionId?: string;
-  abortController: AbortController;
-  outputsDir?: string;
-  apiContext?: ApiContext;
-  /** Override maxTurns for this execution. */
-  maxTurns?: number;
-  /** Override model for this execution (e.g. faster model for voice calls). */
-  model?: string;
-  /** Per-turn Codex reasoning effort override. Ignored by non-Codex executors. */
-  reasoningEffort?: CodexReasoningEffort;
-  /** Override allowed tools for this execution (empty array = no tools). */
-  allowedTools?: string[];
-  /** Called whenever Claude Code fires a team coordination hook. */
-  onTeamEvent?: (event: TeamEvent) => void;
-}
-
-export interface ExecutionHandle {
-  stream: AsyncGenerator<EngineEvent>;
-  sendAnswer(toolUseId: string, sessionId: string, answerText: string): void;
-  /**
-   * Resolve a pending AskUserQuestion PreToolUse hook with the user's answers.
-   * Use this instead of sendAnswer when running in bypassPermissions mode —
-   * sendAnswer enqueues a tool_result that never reaches the SDK because the
-   * internal permission check short-circuits before auto-allow.
-   */
-  resolveQuestion(toolUseId: string, answers: Record<string, string>): void;
-  finish(): void;
 }
 
 export class ClaudeExecutor {

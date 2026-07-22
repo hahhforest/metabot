@@ -36,7 +36,7 @@ import type { Logger } from '../../utils/logger.js';
 import { AsyncQueue } from '../../utils/async-queue.js';
 import { buildMetaBotApiPromptContext } from '../prompt-context.js';
 import type { EngineEvent } from '../protocol.js';
-import type { TeamEvent, ApiContext } from './executor.js';
+import type { TeamEvent, ApiContext } from '../execution.js';
 import { apply1MContextSettings } from './executor.js';
 import { makeCanUseTool } from './exit-plan-mode.js';
 import { ptyQuery } from './pty/pty-query.js';
