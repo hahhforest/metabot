@@ -19,7 +19,7 @@ export interface OpenCodeRuntime {
   close(): Promise<void>;
 }
 
-interface ManagedChild extends Pick<ChildProcess, 'exitCode' | 'signalCode' | 'stderr' | 'once' | 'kill'> {}
+type ManagedChild = Pick<ChildProcess, 'exitCode' | 'signalCode' | 'stderr' | 'once' | 'kill'>;
 
 interface RuntimeManagerDependencies {
   spawnServer?: (command: string, args: string[], options: Parameters<typeof spawn>[2]) => ManagedChild;
@@ -139,7 +139,9 @@ export class OpenCodeRuntimeManager {
       await stopChild(child);
       const detail = stderr.join('').trim();
       if (detail) {
-        throw new Error(`${error instanceof Error ? error.message : String(error)}: ${detail.slice(-2_000)}`);
+        throw new Error(`${error instanceof Error ? error.message : String(error)}: ${detail.slice(-2_000)}`, {
+          cause: error,
+        });
       }
       throw error;
     }
@@ -264,4 +266,3 @@ async function stopChild(child: ManagedChild): Promise<void> {
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-

@@ -3,6 +3,8 @@ import type { Logger } from '../../utils/logger.js';
 import type { Engine, Executor } from '../types.js';
 import { getEngineDescriptor } from '../registry.js';
 import { ClaudeExecutor } from './executor.js';
+import { listClaudeSessions } from './session-lister.js';
+import type { EngineSessionSummary, ListEngineSessionsOptions } from '../session.js';
 
 export class ClaudeEngine implements Engine {
   readonly name = 'claude' as const;
@@ -15,6 +17,10 @@ export class ClaudeEngine implements Engine {
 
   createExecutor(): Executor {
     return new ClaudeExecutor(this.config, this.logger);
+  }
+
+  async listSessions(options: ListEngineSessionsOptions): Promise<EngineSessionSummary[]> {
+    return listClaudeSessions(options);
   }
 }
 

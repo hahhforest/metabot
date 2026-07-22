@@ -10,6 +10,7 @@ import type {
 import type { CodexExecutor } from './codex/executor.js';
 import type { EngineDescriptor } from './registry.js';
 import type { EngineEvent } from './protocol.js';
+import type { EngineSessionSummary, ListEngineSessionsOptions } from './session.js';
 
 export type { EngineName } from './names.js';
 import type { EngineName } from './names.js';
@@ -26,6 +27,10 @@ export interface Engine {
   readonly descriptor: EngineDescriptor;
   /** Returns the executor used to run queries for this engine. */
   createExecutor(): Executor;
+  /** Lists native sessions that can be resumed in a working directory. */
+  listSessions(options: ListEngineSessionsOptions): Promise<EngineSessionSummary[]>;
+  /** Releases engine-owned runtime resources. */
+  shutdown?(): Promise<void>;
 }
 
 /**
@@ -52,6 +57,8 @@ export type {
   EngineEvent,
   ApiContext,
   TeamEvent,
+  EngineSessionSummary,
+  ListEngineSessionsOptions,
 };
 
 /** Context passed to engine factory. */

@@ -68,9 +68,24 @@ export const ENGINE_DESCRIPTORS: Readonly<Record<EngineName, EngineDescriptor>> 
     exampleModels: ['gpt-5.6', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
     authTip: 'Make sure Codex CLI is authenticated (`codex login`) or configured with an API key.',
   },
+  opencode: {
+    name: 'opencode',
+    displayName: 'OpenCode',
+    capabilities: {
+      liveText: true,
+      tools: true,
+      sessions: true,
+      questions: true,
+      permissions: true,
+      steering: true,
+      subagents: true,
+      cancellation: 'acknowledged',
+    },
+    exampleModels: ['openai/gpt-5.6', 'anthropic/claude-sonnet-4-6', 'google/gemini-3.1-pro'],
+    authTip: 'Make sure OpenCode is configured (`opencode providers`) and version 1.17.14 is installed.',
+  },
 };
 
 export function getEngineDescriptor(name: EngineName): EngineDescriptor {
   return ENGINE_DESCRIPTORS[name];
 }
-

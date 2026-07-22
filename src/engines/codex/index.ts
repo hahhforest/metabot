@@ -3,6 +3,8 @@ import type { Logger } from '../../utils/logger.js';
 import type { Engine } from '../types.js';
 import { getEngineDescriptor } from '../registry.js';
 import { CodexExecutor } from './executor.js';
+import { listCodexSessions } from './session-lister.js';
+import type { EngineSessionSummary, ListEngineSessionsOptions } from '../session.js';
 
 export class CodexEngine implements Engine {
   readonly name = 'codex' as const;
@@ -15,6 +17,10 @@ export class CodexEngine implements Engine {
 
   createExecutor(): CodexExecutor {
     return new CodexExecutor(this.config, this.logger);
+  }
+
+  async listSessions(options: ListEngineSessionsOptions): Promise<EngineSessionSummary[]> {
+    return listCodexSessions(options);
   }
 }
 

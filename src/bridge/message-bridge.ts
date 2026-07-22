@@ -20,9 +20,7 @@ import {
   StreamProcessor,
   SessionManager,
 } from '../engines/index.js';
-import { listClaudeSessions, type SessionSummary } from '../engines/claude/session-lister.js';
-import { listCodexSessions } from '../engines/codex/session-lister.js';
-import { listKimiSessions } from '../engines/kimi/session-lister.js';
+import type { EngineSessionSummary } from '../engines/index.js';
 import { ExecutorRegistry } from '../engines/claude/executor-registry.js';
 import { RateLimiter } from './rate-limiter.js';
 import { OutputsManager } from './outputs-manager.js';
@@ -369,6 +367,10 @@ export class MessageBridge {
    * on the same engine don't re-instantiate the SDK wrapper.
    */
   private executorForEngine(chatId: string, name: EngineName): Executor {
+    return this.engineEntryFor(chatId, name).executor;
+  }
+
+  private engineEntryFor(chatId: string, name: EngineName): { engine: Engine; executor: Executor } {
     let entry = this.engineCache.get(name);
     if (!entry) {
       const engine = createEngine(this.config, this.logger, name);
@@ -377,7 +379,7 @@ export class MessageBridge {
       this.engineCache.set(name, entry);
       this.logger.info({ engine: name, chatId }, 'Instantiated engine on demand for session override');
     }
-    return entry.executor;
+    return entry;
   }
 
   /**
@@ -1311,26 +1313,10 @@ export class MessageBridge {
    * List recent sessions for the chat's active engine and working directory.
    * Read-only — does not touch session state.
    */
-  async listSessionsForChat(chatId: string): Promise<SessionSummary[]> {
+  async listSessionsForChat(chatId: string): Promise<EngineSessionSummary[]> {
     const session = this.sessionManager.getSession(chatId);
     const engineName = session.engine ?? resolveEngineName(this.config);
-    if (engineName === 'codex') {
-      return listCodexSessions({
-        workingDirectory: session.workingDirectory,
-        currentSessionId: session.sessionId,
-      });
-    }
-    if (engineName === 'kimi') {
-      return listKimiSessions({
-        workingDirectory: session.workingDirectory,
-        currentSessionId: session.sessionId,
-        executable: this.config.kimi?.executable,
-        serverUrl: this.config.kimi?.serverUrl,
-        apiKey: this.config.kimi?.apiKey,
-      });
-    }
-    if (engineName !== 'claude') return [];
-    return listClaudeSessions({
+    return this.engineEntryFor(chatId, engineName).engine.listSessions({
       workingDirectory: session.workingDirectory,
       currentSessionId: session.sessionId,
     });
@@ -3202,15 +3188,16 @@ export class MessageBridge {
     this.startingTasks.clear();
     this.messageQueues.clear();
     this.sessionManager.destroy();
-    // Tear down persistent executors (Stage 2). This is the one inherently
-    // async step: registry.shutdownAll awaits clean SDK/PTY process exit and
-    // flushes per-executor buffers. Return its promise so an awaiting caller
-    // (destroyAsync) can let in-flight teardown finish before the process
-    // exits; the legacy sync destroy() fire-and-forgets it.
+    // Tear down engine-owned runtimes (for example a managed OpenCode Server)
+    // and persistent Claude executors. External runtimes declare no ownership
+    // and their shutdown implementation is a no-op.
+    const shutdowns = [...this.engineCache.values()]
+      .map(({ engine }) => engine.shutdown?.())
+      .filter((promise): promise is Promise<void> => !!promise);
     if (this.persistentRegistry) {
-      return this.persistentRegistry.shutdownAll('bridge-destroy');
+      shutdowns.push(this.persistentRegistry.shutdownAll('bridge-destroy'));
     }
-    return Promise.resolve();
+    return Promise.all(shutdowns).then(() => undefined);
   }
 
   /**

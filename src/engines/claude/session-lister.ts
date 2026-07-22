@@ -12,17 +12,9 @@
 import { openSync, readSync, statSync, closeSync, readdirSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import type { EngineSessionSummary } from '../session.js';
 
-export interface SessionSummary {
-  sessionId: string;
-  /** First real user prompt, whitespace-collapsed + truncated. */
-  preview: string;
-  /** Last-modified time of the .jsonl (ms since epoch). */
-  lastActive: number;
-  sizeBytes: number;
-  /** True when this is the chat's currently-pinned session. */
-  isCurrent: boolean;
-}
+export type SessionSummary = EngineSessionSummary;
 
 /**
  * Directory where `claude` stores this cwd's session transcripts.
