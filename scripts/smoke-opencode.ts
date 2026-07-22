@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { BotConfigBase } from '../src/config.js';
@@ -7,10 +8,17 @@ import { OpenCodeEngine } from '../src/engines/opencode/index.js';
 import type { Logger } from '../src/utils/logger.js';
 
 const model = process.env.OPENCODE_SMOKE_MODEL || 'opencode/big-pickle';
+const toolModel = process.env.OPENCODE_SMOKE_TOOL_MODEL || 'opencode/mimo-v2.5-free';
 const workDir = mkdtempSync(join(tmpdir(), 'metabot-opencode-smoke-'));
+const toolProof = `METABOT_OC_TOOL_${randomUUID()}`;
+writeFileSync(join(workDir, 'tool-proof.txt'), `${toolProof}\n`, 'utf8');
 const logger = {
   child: () => logger,
-  debug: () => undefined,
+  debug: (context: unknown, message?: string) => {
+    if (process.env.OPENCODE_SMOKE_DEBUG === 'true') {
+      console.error(message || 'debug', JSON.stringify(context));
+    }
+  },
   info: (context: unknown, message?: string) => console.error(message || context),
   warn: (context: unknown, message?: string) => console.error(message || context),
   error: (context: unknown, message?: string) => console.error(message || context),
@@ -32,7 +40,6 @@ const config: BotConfigBase = {
   opencode: {
     model,
     permissionMode: 'auto',
-    pure: true,
   },
 };
 
@@ -45,6 +52,17 @@ try {
   const sessionId = sessionIdOf(fresh);
   assertSuccessful(fresh, 'fresh');
   assertText(fresh, 'METABOT_OC_FRESH', 'fresh');
+  assertStreamingOrder(fresh, 'fresh');
+
+  console.error(`OpenCode smoke: tool (${toolModel})`);
+  const tool = await runTurn(
+    'Use the bash tool to read tool-proof.txt. Then reply with exactly the file content and nothing else.',
+    undefined,
+    toolModel,
+  );
+  assertSuccessful(tool, 'tool');
+  assertText(tool, toolProof, 'tool');
+  assertToolRoundTrip(tool, 'tool');
 
   console.error(`OpenCode smoke: resume (${sessionId})`);
   const resumed = await runTurn(
@@ -70,13 +88,23 @@ try {
     throw new Error(`cancel smoke ended as ${cancelResult?.subtype ?? 'no result'}`);
   }
 
-  console.log(JSON.stringify({ ok: true, model, sessionId, checks: ['fresh', 'resume', 'cancel'] }, null, 2));
+  console.log(JSON.stringify({
+    ok: true,
+    model,
+    toolModel,
+    sessionId,
+    checks: ['stream', 'fresh', 'resume', 'tool', 'cancel'],
+  }, null, 2));
 } finally {
   await engine.shutdown();
   rmSync(workDir, { recursive: true, force: true });
 }
 
-async function runTurn(prompt: string, sessionId?: string): Promise<EngineEvent[]> {
+async function runTurn(
+  prompt: string,
+  sessionId?: string,
+  modelOverride?: string,
+): Promise<EngineEvent[]> {
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), 90_000);
   timeout.unref?.();
@@ -86,6 +114,7 @@ async function runTurn(prompt: string, sessionId?: string): Promise<EngineEvent[
       cwd: workDir,
       abortController,
       ...(sessionId ? { sessionId } : {}),
+      ...(modelOverride ? { model: modelOverride } : {}),
       apiContext: { botName: config.name, chatId: sessionId ? 'smoke-resume' : 'smoke-fresh' },
     });
     return await withTimeout(collect(handle.stream), 95_000, sessionId ? 'resume' : 'fresh');
@@ -137,4 +166,26 @@ function assertText(events: EngineEvent[], expected: string, label: string): voi
     .map((content) => content.text)
     .join('');
   if (!text.includes(expected)) throw new Error(`${label} smoke response did not contain ${expected}: ${text}`);
+}
+
+function assertStreamingOrder(events: EngineEvent[], label: string): void {
+  const firstText = events.findIndex((event) => event.type === 'assistant');
+  const terminal = events.findIndex((event) => event.type === 'result');
+  if (firstText < 0 || terminal < 0 || firstText >= terminal) {
+    throw new Error(`${label} smoke did not stream assistant content before its terminal result`);
+  }
+}
+
+function assertToolRoundTrip(events: EngineEvent[], label: string): void {
+  const hasToolUse = events.some((event) =>
+    event.type === 'assistant'
+    && event.message?.content?.some((content) => content.type === 'tool_use'),
+  );
+  const hasToolResult = events.some((event) =>
+    event.type === 'user'
+    && event.message?.content?.some((content) => content.type === 'tool_result'),
+  );
+  if (!hasToolUse || !hasToolResult) {
+    throw new Error(`${label} smoke did not observe a complete tool_use/tool_result round trip`);
+  }
 }

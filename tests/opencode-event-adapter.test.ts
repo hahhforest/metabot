@@ -82,6 +82,7 @@ describe('OpenCodeEventAdapter', () => {
     expect(called[0]?.message?.content?.[0]).toMatchObject({
       type: 'tool_use', id: 'call-1', name: 'bash', input: { command: 'pwd' },
     });
+    expect(succeeded[0]?.type).toBe('user');
     expect(succeeded[0]?.message?.content?.[0]).toMatchObject({ type: 'tool_result', id: 'call-1' });
     expect(result[0]).toMatchObject({
       type: 'result', subtype: 'success', total_cost_usd: 0.12,

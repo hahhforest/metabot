@@ -272,7 +272,9 @@ function toolUse(id: string, name: string, input: unknown, sessionId: string): E
 
 function toolResult(id: string, isError: boolean, sessionId: string, text?: string): EngineEvent {
   return {
-    type: 'assistant',
+    // Tool results are user-side messages in the shared EngineEvent protocol.
+    // StreamProcessor uses that role transition to complete the active tool.
+    type: 'user',
     session_id: sessionId,
     parent_tool_use_id: null,
     message: { content: [{ type: 'tool_result', id, text }] },
