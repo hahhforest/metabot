@@ -578,6 +578,10 @@ describe('MessageBridge chatId cleanup (memory leak guard)', () => {
     bridge.exitPlanCardsShown.add('chat-1');
     bridge.spontaneousSubscribed.add('chat-1');
     bridge.messageQueues.set('chat-1', []);
+    const startingAbort = new AbortController();
+    bridge.startingTasks.set('starting-chat', {
+      startTime: Date.now(), abortController: startingAbort, cancelled: false,
+    });
     const clearedTimers: Array<ReturnType<typeof setTimeout>> = [];
     const bufTimer = setTimeout(() => {}, 60_000);
     bridge.spontaneousBuffers.set('chat-1', { teamState: { teammates: [], tasks: [] }, snippets: [], timer: bufTimer });
@@ -597,11 +601,50 @@ describe('MessageBridge chatId cleanup (memory leak guard)', () => {
     expect(bridge.spontaneousBuffers.size).toBe(0);
     expect(bridge.pendingBetweenTurnQuestions.size).toBe(0);
     expect(bridge.messageQueues.size).toBe(0);
+    expect(bridge.startingTasks.size).toBe(0);
+    expect(startingAbort.signal.aborted).toBe(true);
     expect(bridge.chatIdCleanupTimer).toBeUndefined();
 
     clearTimeout(bufTimer);
     clearTimeout(qTimer);
     void clearedTimers;
+  });
+
+  it('destroy() and destroyAsync() share engine-native cancellation acknowledgement', async () => {
+    const sender = makeSender();
+    const bridge = new MessageBridge(makeConfig(), mockLogger, sender as any) as any;
+    const abortController = new AbortController();
+    let releaseCancel!: () => void;
+    const cancelGate = new Promise<void>((resolve) => { releaseCancel = resolve; });
+    const cancel = vi.fn(() => cancelGate);
+    bridge.runningTasks.set('running-chat', {
+      abortController,
+      startTime: Date.now(),
+      executionHandle: {
+        stream: { async *[Symbol.asyncIterator]() {} },
+        sendAnswer: () => {},
+        resolveQuestion: () => {},
+        cancel,
+        finish: () => {},
+      },
+      pendingQuestion: null,
+      currentQuestionIndex: 0,
+      collectedAnswers: {},
+      cardMessageId: 'card-1',
+      processor: {},
+    });
+
+    bridge.destroy();
+    let destroyed = false;
+    const destroying = bridge.destroyAsync().then(() => { destroyed = true; });
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+
+    expect(abortController.signal.aborted).toBe(true);
+    expect(destroyed).toBe(false);
+
+    releaseCancel();
+    await destroying;
+    expect(destroyed).toBe(true);
   });
 });
 

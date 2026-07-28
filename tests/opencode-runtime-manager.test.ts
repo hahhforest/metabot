@@ -92,6 +92,37 @@ describe('OpenCodeRuntimeManager', () => {
     expect(child.kill).toHaveBeenCalledWith('SIGTERM');
   });
 
+  it('closes a managed runtime once when shutdown races startup', async () => {
+    const child = fakeChild();
+    const spawnServer = vi.fn(() => child as any);
+    let releaseProbe!: () => void;
+    const probe = vi.fn(
+      () => new Promise<{ healthy: true; version: string }>((resolve) => {
+        releaseProbe = () => resolve({ healthy: true, version: SUPPORTED_OPENCODE_VERSION });
+      }),
+    );
+    const manager = new OpenCodeRuntimeManager(
+      { executable: '/usr/local/bin/opencode' },
+      logger,
+      {
+        spawnServer,
+        createClient: vi.fn(() => ({}) as any),
+        findFreePort: async () => 43123,
+        probe,
+      },
+    );
+
+    const starting = manager.start();
+    await vi.waitFor(() => expect(spawnServer).toHaveBeenCalledTimes(1));
+    const closing = Promise.all([manager.close(), manager.close()]);
+    releaseProbe();
+
+    await starting;
+    await closing;
+    expect(child.kill).toHaveBeenCalledTimes(1);
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+  });
+
   it('fails fast when the server and pinned SDK contract do not match', async () => {
     const manager = new OpenCodeRuntimeManager(
       { serverUrl: 'http://127.0.0.1:4096' },
@@ -111,4 +142,3 @@ describe('OpenCodeRuntimeManager', () => {
     expect(() => normalizeServerUrl('file:///tmp/opencode.sock')).toThrow('must use http or https');
   });
 });
-

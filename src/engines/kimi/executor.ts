@@ -106,18 +106,24 @@ export class KimiExecutor {
     };
     this.activeTurns.set(turnKey, active);
 
-    const abort = () => {
+    let streamStarted = false;
+    let abortSessionId: string | undefined;
+    let abortPromise: Promise<void> | undefined;
+    const abort = (): Promise<void> => {
       const sid = active.sessionId;
-      if (sid) {
-        void this.client
-          .abortSession(sid)
-          .catch((error) =>
-            this.logger.warn({ error, sessionId: sid, engine: 'kimi' }, 'Failed to abort Kimi session'),
-          );
-      }
+      if (!sid) return Promise.resolve();
+      if (abortSessionId === sid) return abortPromise ?? Promise.resolve();
+      abortSessionId = sid;
+      abortPromise = this.client.abortSession(sid).catch((error) => {
+        this.logger.warn({ error, sessionId: sid, engine: 'kimi' }, 'Failed to abort Kimi session');
+      });
+      return abortPromise;
     };
-    if (abortController.signal.aborted) abort();
-    else abortController.signal.addEventListener('abort', abort, { once: true });
+    const onAbort = () => {
+      void abort();
+    };
+    if (abortController.signal.aborted) void abort();
+    else abortController.signal.addEventListener('abort', onAbort, { once: true });
 
     const client = this.client;
     const config = this.config;
@@ -127,6 +133,7 @@ export class KimiExecutor {
     const resolveQuestion = this.resolveQuestion.bind(this);
     let turnState: KimiTurnState | undefined;
     async function* stream(): AsyncGenerator<EngineEvent> {
+      streamStarted = true;
       try {
         const model = await client.resolveModel(options.model ?? config.kimi?.model);
         const session = await client.openSession(cwd, sessionId, model.id);
@@ -154,7 +161,7 @@ export class KimiExecutor {
         yield { type: 'system', subtype: 'init', session_id: session.id };
 
         if (abortController.signal.aborted) {
-          await client.abortSession(session.id).catch(() => undefined);
+          await abort();
           throw abortError();
         }
 
@@ -251,10 +258,22 @@ export class KimiExecutor {
           };
         }
       } finally {
-        abortController.signal.removeEventListener('abort', abort);
+        abortController.signal.removeEventListener('abort', onAbort);
         if (activeTurns.get(turnKey) === active) activeTurns.delete(turnKey);
       }
     }
+
+    const cancel = async (): Promise<void> => {
+      if (!abortController.signal.aborted) abortController.abort();
+      // An unconsumed async generator has not opened a remote session.
+      if (!streamStarted) return;
+      try {
+        await active.ready;
+      } catch {
+        // Launch failures reject ready; a session may still have been opened.
+      }
+      await abort();
+    };
 
     return {
       stream: stream(),
@@ -269,7 +288,10 @@ export class KimiExecutor {
         if (!question || !active.sessionId) return;
         void resolveQuestion(active.sessionId, question, answers);
       },
-      finish: () => undefined,
+      cancel,
+      finish: () => {
+        if (activeTurns.get(turnKey) === active) void cancel();
+      },
     };
   }
 

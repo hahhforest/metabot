@@ -45,8 +45,11 @@ export interface ExecutorOptions {
 
 /** One in-flight turn and its user-interaction control surface. */
 export interface ExecutionHandle {
-  stream: AsyncGenerator<EngineEvent>;
+  stream: AsyncIterable<EngineEvent>;
   sendAnswer(toolUseId: string, sessionId: string, answerText: string): void;
   resolveQuestion(toolUseId: string, answers: Record<string, string>): void;
+  /** Request native cancellation and resolve once the engine acknowledges it. */
+  cancel(): Promise<void>;
+  /** End local consumption; active engines may request best-effort cancellation. */
   finish(): void;
 }

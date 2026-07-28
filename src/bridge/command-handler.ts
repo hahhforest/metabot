@@ -556,6 +556,18 @@ export class CommandHandler {
     }
 
     const sessions = await this.listSessions(chatId);
+    // Listing sessions crosses an async engine boundary. A task may have
+    // started after the first guard, so re-check immediately before mutating
+    // the chat's active session.
+    if (this.getActiveTask(chatId)) {
+      await this.sender.sendTextNotice(
+        chatId,
+        '⏳ Task In Progress',
+        'A task started while sessions were loading. Use `/stop` first, then `/resume`.',
+        'orange',
+      );
+      return;
+    }
     if (sessions.length === 0) {
       await this.sender.sendTextNotice(
         chatId,

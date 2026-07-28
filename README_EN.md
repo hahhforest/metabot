@@ -90,8 +90,9 @@ Engine workspace conventions remain native:
 | Skills             | `.codex/skills/` | `.agents/skills/` | `.agents/skills/` | `.claude/skills/`               |
 | Authentication     | Codex profile    | `~/.kimi-code/`   | OpenCode provider | Claude credentials              |
 
-The installer mirrors MetaBot's bundled skills into the active engine paths;
-your existing locally modified skills are preserved.
+The installer keeps MetaBot-owned Skills in user-global discovery roots only.
+Historical workspace mirrors are backed up and retired, while user-owned
+`AGENTS.md` and `CLAUDE.md` files remain untouched.
 
 ## Quick Start
 

@@ -312,7 +312,7 @@ describe('KimiExecutor Feishu parity', () => {
     expect(executor.canSteer('oc-kimi-steer')).toBe(false);
   });
 
-  it('maps /stop aborts to the active Kimi Code session and closes the turn', async () => {
+  it('awaits native Kimi cancellation acknowledgement and closes the turn', async () => {
     const client = new FakeKimiClient();
     let releaseAbort!: () => void;
     const aborted = new Promise<void>((resolve) => {
@@ -339,8 +339,9 @@ describe('KimiExecutor Feishu parity', () => {
     const pending = handle.stream.next();
     await vi.waitFor(() => expect(client.submitPrompt).toHaveBeenCalled());
 
-    abortController.abort();
+    const cancellation = handle.cancel();
     const terminal = await pending;
+    await cancellation;
     await collect(handle.stream);
 
     expect(client.abortSession).toHaveBeenCalledWith('session-kimi-1');

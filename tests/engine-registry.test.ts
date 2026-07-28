@@ -65,4 +65,8 @@ describe('engine registry', () => {
       else process.env.METABOT_ENGINE = previous;
     }
   });
+
+  it('falls back to Codex for an invalid untyped config value', () => {
+    expect(resolveEngineName({ ...config, engine: 'future-engine' })).toBe('codex');
+  });
 });

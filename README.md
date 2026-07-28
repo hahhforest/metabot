@@ -90,7 +90,7 @@ opencode   # 首次运行时配置 Provider
 | Skills     | `.codex/skills/` | `.agents/skills/` | `.agents/skills/` | `.claude/skills/`    |
 | 认证状态   | Codex profile    | `~/.kimi-code/`   | OpenCode Provider | Claude credentials   |
 
-安装器会把 MetaBot 内置 Skills 镜像到当前引擎路径，并保留用户已修改的本地 Skills。
+安装器只把 MetaBot 自有 Skills 安装到用户级全局发现路径；历史 workspace 镜像会先备份再退出发现路径，用户自己的 `AGENTS.md` 和 `CLAUDE.md` 始终保持不变。
 
 ## 快速开始
 

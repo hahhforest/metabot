@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildOpenCodeConfig } from '../src/config.js';
+import { buildOpenCodeConfig, webBotFromJson } from '../src/config.js';
 
 const KEYS = [
   'OPENCODE_EXECUTABLE_PATH',
@@ -59,5 +59,10 @@ describe('buildOpenCodeConfig', () => {
         permissionMode: 'deny',
       }));
   });
-});
 
+  it('accepts only registered engine names at the untyped JSON boundary', () => {
+    const base = { name: 'web', defaultWorkingDirectory: '/tmp' };
+    expect(webBotFromJson({ ...base, engine: 'opencode' }).engine).toBe('opencode');
+    expect(webBotFromJson({ ...base, engine: 'future-engine' as any }).engine).toBeUndefined();
+  });
+});

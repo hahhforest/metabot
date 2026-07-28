@@ -434,6 +434,13 @@ export class CodexExecutor {
       });
     }
 
+    const cancel = async (): Promise<void> => {
+      if (exitTimer) clearTimeout(exitTimer);
+      if (!abortController.signal.aborted) abortController.abort();
+      if (child && !child.killed) child.kill('SIGTERM');
+      queue.finish();
+    };
+
     return {
       stream: queue[Symbol.asyncIterator]() as AsyncGenerator<EngineEvent>,
       sendAnswer: (_toolUseId: string, _sid: string, _answerText: string) => {
@@ -442,10 +449,9 @@ export class CodexExecutor {
       resolveQuestion: (_toolUseId: string, _answers: Record<string, string>) => {
         this.logger.warn({ engine: 'codex' }, 'resolveQuestion called on Codex executor — not implemented');
       },
+      cancel,
       finish: () => {
-        if (exitTimer) clearTimeout(exitTimer);
-        if (child && !child.killed) child.kill('SIGTERM');
-        queue.finish();
+        void cancel();
       },
     };
   }

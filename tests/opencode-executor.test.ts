@@ -166,6 +166,52 @@ describe('OpenCodeExecutor', () => {
     expect(messages.at(-1)).toMatchObject({ type: 'result', subtype: 'success', result: 'hello' });
   });
 
+  it('uses the canonical current-chat and compact Team Context', async () => {
+    const events = new AsyncQueue<V2Event>();
+    const controlPlane = buildControlPlane(events);
+    vi.mocked(controlPlane.prompt).mockImplementation(async (request) => {
+      events.enqueue(event('session.idle', {}));
+      return {
+        admittedSeq: 1,
+        id: 'input',
+        sessionID: request.sessionId,
+        prompt: { text: request.text },
+        delivery: 'queue',
+        timeCreated: 1,
+      };
+    });
+    const { executor } = buildExecutor(controlPlane);
+    const teamContext = ['## Team Context', 'Team: metabot-dev', 'Members:', '- worker — backend · codex · idle'].join(
+      '\n',
+    );
+
+    await collect(
+      executor.startExecution({
+        ...options(),
+        apiContext: {
+          botName: 'metabot',
+          chatId: 'oc_team',
+          engine: 'opencode',
+          sessionId: 'session_current',
+          teamContext,
+          groupMembers: ['metabot', 'reviewer'],
+          groupId: 'group-1',
+        },
+      }).stream,
+    );
+
+    const submitted = vi.mocked(controlPlane.prompt).mock.calls[0]?.[0].text ?? '';
+    expect(submitted).toContain('## Current MetaBot Context');
+    expect(submitted).toContain('Agent: metabot');
+    expect(submitted).toContain('Chat ID: oc_team');
+    expect(submitted).toContain('Engine: opencode');
+    expect(submitted).toContain('Session ID: session_current');
+    expect(submitted).toContain(teamContext);
+    expect(submitted).toContain('metabot schedule add metabot oc_team <delaySeconds> "<prompt>"');
+    expect(submitted).toContain('metabot talk <botName> grouptalk-group-1-<botName> "message"');
+    expect(submitted).not.toContain('SECRET task history');
+  });
+
   it('resumes an owned session and applies model and agent overrides', async () => {
     const events = new AsyncQueue<V2Event>();
     const controlPlane = buildControlPlane(events);
@@ -213,6 +259,31 @@ describe('OpenCodeExecutor', () => {
 
     expect(controlPlane.interrupt).toHaveBeenCalledWith('ses_new');
     expect(messages.at(-1)).toMatchObject({ type: 'result', subtype: 'error_cancelled' });
+  });
+
+  it('interrupts at most once when finish and AbortSignal race', async () => {
+    const events = new AsyncQueue<V2Event>();
+    const controlPlane = buildControlPlane(events);
+    let releaseInterrupt!: () => void;
+    vi.mocked(controlPlane.interrupt).mockImplementation(
+      () => new Promise<void>((resolve) => {
+        releaseInterrupt = resolve;
+      }),
+    );
+    const abortController = new AbortController();
+    const { executor } = buildExecutor(controlPlane);
+    const handle = executor.startExecution(options(abortController));
+    const reading = collect(handle.stream);
+    await waitUntil(() => vi.mocked(controlPlane.prompt).mock.calls.length === 1);
+
+    const cancelling = handle.cancel();
+    abortController.abort();
+    await waitUntil(() => vi.mocked(controlPlane.interrupt).mock.calls.length === 1);
+    releaseInterrupt();
+    await cancelling;
+    await reading;
+
+    expect(controlPlane.interrupt).toHaveBeenCalledTimes(1);
   });
 
   it('routes question answers in native question order', async () => {

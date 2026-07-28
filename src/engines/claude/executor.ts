@@ -501,6 +501,11 @@ export class ClaudeExecutor {
       }
     }
 
+    const cancel = async (): Promise<void> => {
+      inputQueue.finish();
+      if (!abortController.signal.aborted) abortController.abort();
+    };
+
     return {
       stream: wrapStream(),
       sendAnswer: (toolUseId: string, sid: string, answerText: string) => {
@@ -545,6 +550,7 @@ export class ClaudeExecutor {
           inputQueue.enqueue(answerMessage);
         }
       },
+      cancel,
       finish: () => {
         inputQueue.finish();
       },

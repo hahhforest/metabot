@@ -244,5 +244,6 @@ describe('workspace and packaged Skill ownership', () => {
     expect(windowsInstaller).toContain('Retired voice Skill');
     expect(windowsInstaller).not.toContain('src\\skills\\metabot-team');
     expect(windowsInstaller).not.toContain('src\\skills\\voice');
+    expect(updater).toContain('CODEX_SKILLS_DIR="${CODEX_HOME:-$HOME/.codex}/skills"');
   });
 });

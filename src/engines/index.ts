@@ -40,7 +40,7 @@ export function createEngine(
 /** Resolve the default engine for a bot config (no session override). */
 export function resolveEngineName(config: BotConfigBase): EngineName {
   const explicit = config.engine;
-  if (explicit) return explicit;
+  if (isEngineName(explicit)) return explicit;
   const envDefault = process.env.METABOT_ENGINE;
   if (isEngineName(envDefault)) return envDefault;
   return 'codex';

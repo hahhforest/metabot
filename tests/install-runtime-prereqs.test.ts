@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SH_SOURCE = fs.readFileSync(path.join(REPO_ROOT, 'install.sh'), 'utf-8');
 const PS_SOURCE = fs.readFileSync(path.join(REPO_ROOT, 'install.ps1'), 'utf-8');
+const CLI_INSTALL_SOURCE = fs.readFileSync(path.join(REPO_ROOT, 'packages/cli/install-cli.sh'), 'utf-8');
 
 function extractBashFunction(name: string): string {
   const startMarker = `${name}() {`;
@@ -60,6 +61,12 @@ version_at_least v23.0.0 22.19.0
       expect(source).toContain('metabot-team');
       expect(source).toContain('Retired project-level');
     }
+
+    expect(CLI_INSTALL_SOURCE).toContain('claude|codex|kimi|opencode|all|both');
+    expect(CLI_INSTALL_SOURCE).toContain('"$ENGINE" == "opencode"');
+    expect(CLI_INSTALL_SOURCE).toContain('$HOME/.agents/skills/metabot');
+    expect(CLI_INSTALL_SOURCE).toContain('${CODEX_HOME:-$HOME/.codex}/skills');
+    expect(CLI_INSTALL_SOURCE).toContain('"$ENGINE" == "claude" || "$ENGINE" == "all"');
   });
 
   it('leaves AGENTS.md and CLAUDE.md user-owned', () => {

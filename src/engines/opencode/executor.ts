@@ -4,14 +4,14 @@ import type { BotConfigBase } from '../../config.js';
 import type { Logger } from '../../utils/logger.js';
 import { AsyncQueue } from '../../utils/async-queue.js';
 import type { ExecutionHandle, ExecutorOptions } from '../execution.js';
+import { buildMetaBotApiPromptContext } from '../prompt-context.js';
 import type { EngineEvent } from '../protocol.js';
 import { SdkOpenCodeControlPlane, type OpenCodeControlPlane } from './control-plane.js';
 import { OpenCodeEventAdapter, type OpenCodePendingInteraction } from './event-adapter.js';
-import { OpenCodeRuntimeManager, type OpenCodeRuntime } from './runtime-manager.js';
+import type { OpenCodeRuntime } from './runtime-manager.js';
 
 interface OpenCodeRuntimeProvider {
   start(): Promise<OpenCodeRuntime>;
-  close(): Promise<void>;
 }
 
 interface ActiveOpenCodeTurn {
@@ -21,6 +21,7 @@ interface ActiveOpenCodeTurn {
   adapter?: OpenCodeEventAdapter;
   promptSubmitted: boolean;
   completed: boolean;
+  cancelPromise?: Promise<void>;
 }
 
 export class OpenCodeExecutor {
@@ -30,13 +31,13 @@ export class OpenCodeExecutor {
   constructor(
     private readonly config: BotConfigBase,
     private readonly logger: Logger,
-    runtime?: OpenCodeRuntimeProvider,
+    runtime: OpenCodeRuntimeProvider,
     private readonly controlPlaneFactory: (runtime: OpenCodeRuntime, directory: string) => OpenCodeControlPlane = (
       activeRuntime,
       directory,
     ) => new SdkOpenCodeControlPlane(activeRuntime.client(directory)),
   ) {
-    this.runtime = runtime ?? new OpenCodeRuntimeManager(config.opencode ?? {}, logger);
+    this.runtime = runtime;
   }
 
   startExecution(options: ExecutorOptions): ExecutionHandle {
@@ -58,30 +59,34 @@ export class OpenCodeExecutor {
       for (const event of events) queue.enqueue(event);
     };
 
-    const cancel = async (): Promise<void> => {
-      if (active.completed) return;
-      aborted = true;
-      try {
-        await active.ready;
-      } catch {
-        /* ready never rejects; defensive for injected implementations */
-      }
-      if (active.controlPlane && active.sessionId && active.promptSubmitted) {
+    const cancel = (): Promise<void> => {
+      if (active.cancelPromise) return active.cancelPromise;
+      active.cancelPromise = (async () => {
+        if (active.completed) return;
+        aborted = true;
         try {
-          await active.controlPlane.interrupt(active.sessionId);
-        } catch (error) {
-          this.logger.warn({ error, engine: 'opencode', sessionId: active.sessionId }, 'OpenCode interrupt failed');
+          await active.ready;
+        } catch {
+          /* ready never rejects; defensive for injected implementations */
         }
-      }
-      if (!active.completed) {
-        if (active.adapter) push(active.adapter.finish('cancelled'));
-        else queue.enqueue(cancelledResult(active.sessionId));
-        active.completed = true;
-        // Publish the terminal event before closing SSE. Closing first lets the
-        // stream-finalizer win the race and finish the queue without a result.
-        subscriptionAbort.abort();
-        queue.finish();
-      }
+        if (active.controlPlane && active.sessionId && active.promptSubmitted) {
+          try {
+            await active.controlPlane.interrupt(active.sessionId);
+          } catch (error) {
+            this.logger.warn({ error, engine: 'opencode', sessionId: active.sessionId }, 'OpenCode interrupt failed');
+          }
+        }
+        if (!active.completed) {
+          if (active.adapter) push(active.adapter.finish('cancelled'));
+          else queue.enqueue(cancelledResult(active.sessionId));
+          active.completed = true;
+          // Publish the terminal event before closing SSE. Closing first lets the
+          // stream-finalizer win the race and finish the queue without a result.
+          subscriptionAbort.abort();
+          queue.finish();
+        }
+      })();
+      return active.cancelPromise;
     };
 
     const onAbort = () => {
@@ -113,6 +118,7 @@ export class OpenCodeExecutor {
         resolveQuestion(toolUseId, { _answer: answerText });
       },
       resolveQuestion,
+      cancel,
       finish: () => {
         void cancel();
       },
@@ -140,10 +146,6 @@ export class OpenCodeExecutor {
     if (!active.controlPlane || !active.sessionId || active.completed) return 'no-active-turn';
     await active.controlPlane.prompt({ sessionId: active.sessionId, text: prompt, delivery: 'steer' });
     return 'steered';
-  }
-
-  close(): Promise<void> {
-    return this.runtime.close();
   }
 
   private async runTurn(
@@ -295,11 +297,14 @@ function buildPromptWithContext(options: ExecutorOptions): string {
     );
   }
   if (options.apiContext) {
-    sections.push(
-      `## MetaBot\nYou are Agent "${options.apiContext.botName}" in chat "${options.apiContext.chatId}". Use the metabot skill and CLI for Memory, T5T, Agent Bus, and Agent Teams.`,
-    );
+    sections.push(buildMetaBotApiPromptContext(options.apiContext));
+    if (options.apiContext.teamContext) sections.push(options.apiContext.teamContext);
     const peers = options.apiContext.groupMembers?.filter((name) => name !== options.apiContext?.botName) ?? [];
-    if (peers.length > 0) {
+    if (peers.length > 0 && options.apiContext.groupId) {
+      sections.push(
+        `## Group Chat\nYou are in a group chat (group: ${options.apiContext.groupId}) with these bots: ${peers.join(', ')}.\nTo talk to another bot, use: \`metabot talk <botName> grouptalk-${options.apiContext.groupId}-<botName> "message"\``,
+      );
+    } else if (peers.length > 0) {
       sections.push(`## Agent Organization\nOther Agents in this group: ${peers.join(', ')}.`);
     }
   }

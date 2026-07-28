@@ -213,6 +213,8 @@ export interface TurnHandle {
    * PersistentClaudeExecutor.shutdown().
    */
   abort(): Promise<void>;
+  /** ExecutionHandle cancellation contract; equivalent to abort(). */
+  cancel(): Promise<void>;
 
   // ── ExecutionHandle compatibility (so the bridge can use TurnHandle as a
   //    drop-in for the legacy ClaudeExecutor.ExecutionHandle). ────────────
@@ -619,6 +621,7 @@ export class PersistentClaudeExecutor extends EventEmitter {
       isAborted: () => turn.detached,
       isCompleted: () => turn.completed,
       abort,
+      cancel: abort,
       // ExecutionHandle compatibility — lets the bridge use TurnHandle as a
       // drop-in for the legacy ClaudeExecutor.ExecutionHandle.
       sendAnswer: (toolUseId: string, _sessionId: string, answerText: string) => {
@@ -678,6 +681,7 @@ export class PersistentClaudeExecutor extends EventEmitter {
       isAborted: () => turn.detached,
       isCompleted: () => turn.completed,
       abort,
+      cancel: abort,
       sendAnswer: (toolUseId: string, _sessionId: string, answerText: string) => {
         this.sendAnswer(toolUseId, answerText);
       },

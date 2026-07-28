@@ -379,7 +379,7 @@ function feishuBotFromJson(entry: FeishuBotJsonEntry): BotConfig {
     ...(entry.visible !== undefined ? { visible: entry.visible } : {}),
     ...(entry.memoryPublic !== undefined ? { memoryPublic: entry.memoryPublic } : {}),
     ...(entry.groupNoMention ? { groupNoMention: true } : {}),
-    ...(entry.engine ? { engine: entry.engine } : {}),
+    ...(isEngineName(entry.engine) ? { engine: entry.engine } : {}),
     ...(entry.kimi ? { kimi: entry.kimi } : {}),
     ...(codex ? { codex } : {}),
     ...(opencode ? { opencode } : {}),
@@ -430,7 +430,7 @@ function telegramBotFromJson(entry: TelegramBotJsonEntry): TelegramBotConfig {
     ...(entry.voiceReply ? { voiceReply: entry.voiceReply } : {}),
     ...(entry.visible !== undefined ? { visible: entry.visible } : {}),
     ...(entry.memoryPublic !== undefined ? { memoryPublic: entry.memoryPublic } : {}),
-    ...(entry.engine ? { engine: entry.engine } : {}),
+    ...(isEngineName(entry.engine) ? { engine: entry.engine } : {}),
     ...(entry.kimi ? { kimi: entry.kimi } : {}),
     ...(codex ? { codex } : {}),
     ...(opencode ? { opencode } : {}),
@@ -478,7 +478,7 @@ export function webBotFromJson(entry: WebBotJsonEntry): BotConfigBase {
     ...(entry.voiceReply ? { voiceReply: entry.voiceReply } : {}),
     ...(entry.visible !== undefined ? { visible: entry.visible } : {}),
     ...(entry.memoryPublic !== undefined ? { memoryPublic: entry.memoryPublic } : {}),
-    ...(entry.engine ? { engine: entry.engine } : {}),
+    ...(isEngineName(entry.engine) ? { engine: entry.engine } : {}),
     ...(entry.kimi ? { kimi: entry.kimi } : {}),
     ...(codex ? { codex } : {}),
     ...(opencode ? { opencode } : {}),
@@ -514,7 +514,7 @@ function wechatBotFromJson(entry: WechatBotJsonEntry): WechatBotConfig {
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.visible !== undefined ? { visible: entry.visible } : {}),
     ...(entry.memoryPublic !== undefined ? { memoryPublic: entry.memoryPublic } : {}),
-    ...(entry.engine ? { engine: entry.engine } : {}),
+    ...(isEngineName(entry.engine) ? { engine: entry.engine } : {}),
     ...(entry.kimi ? { kimi: entry.kimi } : {}),
     ...(codex ? { codex } : {}),
     ...(opencode ? { opencode } : {}),
@@ -604,7 +604,7 @@ function feishuBotFromEnv(): BotConfig {
   const opencode = buildOpenCodeConfig();
   return {
     name: 'default',
-    ...(process.env.METABOT_ENGINE ? { engine: process.env.METABOT_ENGINE as EngineName } : {}),
+    ...(isEngineName(process.env.METABOT_ENGINE) ? { engine: process.env.METABOT_ENGINE } : {}),
     ...(codex ? { codex } : {}),
     ...(opencode ? { opencode } : {}),
     feishu: {
@@ -629,7 +629,7 @@ function telegramBotFromEnv(): TelegramBotConfig {
   const opencode = buildOpenCodeConfig();
   return {
     name: 'telegram-default',
-    ...(process.env.METABOT_ENGINE ? { engine: process.env.METABOT_ENGINE as EngineName } : {}),
+    ...(isEngineName(process.env.METABOT_ENGINE) ? { engine: process.env.METABOT_ENGINE } : {}),
     ...(codex ? { codex } : {}),
     ...(opencode ? { opencode } : {}),
     telegram: {
@@ -653,7 +653,7 @@ function wechatBotFromEnv(): WechatBotConfig {
   const opencode = buildOpenCodeConfig();
   return {
     name: 'wechat-default',
-    ...(process.env.METABOT_ENGINE ? { engine: process.env.METABOT_ENGINE as EngineName } : {}),
+    ...(isEngineName(process.env.METABOT_ENGINE) ? { engine: process.env.METABOT_ENGINE } : {}),
     ...(codex ? { codex } : {}),
     ...(opencode ? { opencode } : {}),
     wechat: {

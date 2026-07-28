@@ -28,6 +28,7 @@ function buildHandler(opts: {
   engine?: string;
   running?: boolean;
   sessions?: SessionSummary[];
+  listSessions?: () => SessionSummary[] | Promise<SessionSummary[]>;
 } = {}) {
   const notices: RecordedNotice[] = [];
   const resumed: string[] = [];
@@ -57,7 +58,7 @@ function buildHandler(opts: {
     () => {},
     () => 0,
     async () => {},
-    () => opts.sessions ?? makeSessions(),
+    () => opts.listSessions?.() ?? opts.sessions ?? makeSessions(),
     async (_chatId: string, sessionId: string) => { resumed.push(sessionId); },
   );
   return { handler, notices, resumed };
@@ -111,6 +112,33 @@ describe('CommandHandler /resume', () => {
     await handler.handle(msg('/resume def'));
     expect(resumed).toEqual([]);
     expect(notices.at(-1)?.color).toBe('orange');
+  });
+
+  it('refuses when a turn starts while sessions are loading', async () => {
+    let releaseSessions!: () => void;
+    let markListing!: () => void;
+    const listing = new Promise<void>((resolve) => { markListing = resolve; });
+    const gate = new Promise<void>((resolve) => { releaseSessions = resolve; });
+    const state = {
+      engine: 'claude',
+      running: false,
+      listSessions: async () => {
+        markListing();
+        await gate;
+        return makeSessions();
+      },
+    };
+    const { handler, notices, resumed } = buildHandler(state);
+
+    const handling = handler.handle(msg('/resume def'));
+    await listing;
+    state.running = true;
+    releaseSessions();
+    await handling;
+
+    expect(resumed).toEqual([]);
+    expect(notices.at(-1)).toMatchObject({ title: '⏳ Task In Progress', color: 'orange' });
+    expect(notices.at(-1)?.content).toContain('started while sessions were loading');
   });
 
   it('shows usage for a bare /resume (defensive fallback)', async () => {

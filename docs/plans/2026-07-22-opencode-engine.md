@@ -157,4 +157,3 @@
 3. Run formatter, lint, typecheck, all tests, build, and the real smoke test.
 4. Review the diff against every requirement in the design and ADR.
 5. Commit the final docs and verification artifacts.
-

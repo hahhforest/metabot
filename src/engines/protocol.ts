@@ -57,4 +57,3 @@ export type EngineEvent = {
   // StreamProcessor without leaking their native wire types.
   [key: string]: unknown;
 };
-

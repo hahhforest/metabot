@@ -31,6 +31,34 @@ binding, Basic Auth, environment, stderr capture, and process ownership under
 one explicit lifecycle. The initial contract pins both runtime and SDK to
 OpenCode 1.17.14 because the v2 event and durable-history API is still evolving.
 
+### MetaBot platform contracts
+
+OpenCode is a fourth implementation of MetaBot's engine boundary, not a
+parallel application stack. The integration therefore adopts the platform
+contracts introduced in MetaBot v1.3:
+
+- `EngineEvent`, execution, session, descriptor, and capability types remain
+  MetaBot-owned. OpenCode SDK wire types do not escape `src/engines/opencode`.
+- `ExecutionHandle.cancel()` is the engine-neutral asynchronous cancellation
+  boundary. It resolves after the native runtime acknowledges interruption;
+  `finish()` remains the local-consumption compatibility boundary. Async
+  Bridge shutdown awaits cancellation before releasing engine-owned runtimes.
+- Every executor uses the same `Current MetaBot Context` builder. The Bridge
+  supplies the selected engine, current native session when known, and the
+  compact Team Context; OpenCode must not maintain a second prompt-context
+  schema.
+- Team Context is only an active roster and dispatch hint. Tasks, messages,
+  runs, outputs, and member prompts remain durable state queried through
+  `metabot teams` rather than copied into model context.
+- MetaBot-owned Skills are canonical user-global bundles. OpenCode discovers
+  them through the shared Agent Skills root; installation never recreates a
+  project-level MetaBot Skill mirror or overwrites user-owned `AGENTS.md` and
+  `CLAUDE.md` files.
+
+This separation keeps transport concerns inside the engine adapter, current
+chat and Team semantics inside the platform, and reusable CLI behavior inside
+the canonical Skill bundles.
+
 ## Alternatives
 
 ### Spawn `opencode run --format json`
@@ -52,6 +80,14 @@ only with a concrete environment where the Server API cannot be used.
 This would reuse an established MetaBot pattern. It was rejected as the primary
 transport because OpenCode exposes native server-sent events. Snapshots or
 message reads remain appropriate for bounded recovery and reconciliation.
+
+### Give OpenCode its own prompt and project Skill mirror
+
+This would minimize changes to the existing OpenCode executor, but was rejected
+because runtime identity, Team routing, and installed behavior would drift by
+engine. A stale workspace mirror could also shadow the global MetaBot Skill.
+The shared context and global-install contracts are deliberately stronger than
+engine convenience.
 
 ## Consequences
 

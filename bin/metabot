@@ -235,7 +235,7 @@ cmd_update() {
 
   # Update MetaBot-owned Skills in user-global Claude, Codex, and Kimi roots.
   SKILLS_DIR="$HOME/.claude/skills"
-  CODEX_SKILLS_DIR="$HOME/.codex/skills"
+  CODEX_SKILLS_DIR="${CODEX_HOME:-$HOME/.codex}/skills"
   AGENTS_SKILLS_DIR="$HOME/.agents/skills"
   mkdir -p "$SKILLS_DIR" "$CODEX_SKILLS_DIR" "$AGENTS_SKILLS_DIR"
   info "Updating skills..."

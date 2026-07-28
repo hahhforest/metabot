@@ -30,6 +30,7 @@ TARBALL_TMP="$(mktemp -t metabot-cli.XXXXXX.tgz)"
 trap 'rm -f "$TARBALL_TMP"' EXIT
 
 ENGINE="${METABOT_CLI_ENGINE:-both}"
+CODEX_SKILLS_ROOT="${CODEX_HOME:-$HOME/.codex}/skills"
 
 # Parse --engine if passed. Long-form `--engine=…` and short space-separated
 # both supported; positional args ignored (the installer takes none).
@@ -182,7 +183,7 @@ if [[ "$ENGINE" == "claude" || "$ENGINE" == "all" || "$ENGINE" == "both" ]]; the
   install_skill_to "$HOME/.claude/skills/metabot"
 fi
 if [[ "$ENGINE" == "codex" || "$ENGINE" == "all" || "$ENGINE" == "both" ]]; then
-  install_skill_to "$HOME/.codex/skills/metabot"
+  install_skill_to "$CODEX_SKILLS_ROOT/metabot"
 fi
 if [[ "$ENGINE" == "kimi" || "$ENGINE" == "opencode" || "$ENGINE" == "all" || "$ENGINE" == "both" ]]; then
   install_skill_to "$HOME/.agents/skills/metabot"
@@ -234,7 +235,7 @@ echo "  metabot t5t board         # today's t5t"
 echo
 case "$ENGINE" in
   claude) echo "Engine: claude  (skill at ~/.claude/skills/metabot)" ;;
-  codex)  echo "Engine: codex   (skill at ~/.codex/skills/metabot)"  ;;
+  codex)  echo "Engine: codex   (skill at $CODEX_SKILLS_ROOT/metabot)"  ;;
   kimi)   echo "Engine: kimi    (skill at ~/.agents/skills/metabot)" ;;
   opencode) echo "Engine: opencode (skill at ~/.agents/skills/metabot)" ;;
   all|both) echo "Engine: all     (skill in Claude, Codex, and Agent discovery roots)" ;;

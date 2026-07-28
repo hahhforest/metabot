@@ -427,6 +427,31 @@ describe('chat routes', () => {
     });
   });
 
+  it('accepts OpenCode and drops unknown engine values at the chat boundary', async () => {
+    kit = await startTestServer('chat-engine-boundary', { uiAllowedEmails: ['@xvirobotics.com'] });
+    kit.handle.agentStore.register({
+      botName: 'metabot',
+      url: 'http://127.0.0.1:3000',
+      visible: true,
+      ownerCredentialId: 'owner',
+      ownerName: ALICE,
+    });
+    const dm = await webJson(kit, 'POST', '/api/chat/conversations/agent-dm', ALICE, { botName: 'metabot' });
+    const conversationId = JSON.parse(dm.body).id as string;
+
+    const openCode = await webJson(kit, 'POST', `/api/chat/conversations/${conversationId}/messages`, ALICE, {
+      content: 'use OpenCode',
+      engine: 'opencode',
+    });
+    expect(JSON.parse(openCode.body).runs[0].engine).toBe('opencode');
+
+    const unknown = await webJson(kit, 'POST', `/api/chat/conversations/${conversationId}/messages`, ALICE, {
+      content: 'do not forward unknown engines',
+      engine: 'future-engine',
+    });
+    expect(JSON.parse(unknown.body).runs[0].engine).toBeNull();
+  });
+
   it('accepts idempotent run callbacks from the owning agent credential and exposes events to participants', async () => {
     kit = await startTestServer('chat-run-callback', { uiAllowedEmails: ['@xvirobotics.com'] });
     const bridge = await issueMember(kit, 'bridge-cred', ALICE);

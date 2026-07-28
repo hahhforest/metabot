@@ -188,6 +188,8 @@ export class MessageBridge {
   private sessionRegistry?: SessionRegistry;
   /** Chats that have begun task setup but do not have an ExecutionHandle yet. */
   private startingTasks = new Map<string, StartingTask>();
+  /** Shared completion boundary for idempotent sync/async teardown callers. */
+  private teardownPromise?: Promise<void>;
   private runningTasks = new Map<string, RunningTask>(); // keyed by chatId
   private messageQueues = new Map<string, IncomingMessage[]>(); // per-chatId message queue
   private pendingBatches = new Map<string, PendingBatch>(); // media debounce batches
@@ -1414,7 +1416,7 @@ export class MessageBridge {
       });
       // TurnHandle is structurally compatible with ExecutionHandle (stream,
       // sendAnswer, resolveQuestion, finish) — see persistent-executor.ts.
-      return exec.nextTurn(opts.prompt) as unknown as ExecutionHandle;
+      return exec.nextTurn(opts.prompt);
     }
 
     return this.executorForEngine(chatId, engineName).startExecution({
@@ -3144,7 +3146,9 @@ export class MessageBridge {
    * {@link destroy} (fire-and-forget) and {@link destroyAsync} (awaited) share
    * this so the cleanup body lives in one place.
    */
-  private teardownSync(): Promise<void> {
+  private beginTeardown(): Promise<void> {
+    if (this.teardownPromise) return this.teardownPromise;
+    const cancellations: Promise<void>[] = [];
     for (const [, batch] of this.pendingBatches) {
       clearTimeout(batch.timerId);
     }
@@ -3153,7 +3157,11 @@ export class MessageBridge {
       if (task.questionTimeoutId) {
         clearTimeout(task.questionTimeoutId);
       }
-      task.executionHandle.finish();
+      try {
+        cancellations.push(task.executionHandle.cancel());
+      } catch (err) {
+        this.logger.warn({ err, chatId }, 'Failed to request task cancellation during shutdown');
+      }
       task.abortController.abort();
       this.logger.info({ chatId }, 'Aborted running task during shutdown');
     }
@@ -3185,6 +3193,11 @@ export class MessageBridge {
     this.pendingBetweenTurnQuestions.clear();
     this.recentQuestionCard.clear();
     this.exitPlanCardsShown.clear();
+    for (const [chatId, task] of this.startingTasks) {
+      task.cancelled = true;
+      task.abortController.abort();
+      this.logger.info({ chatId }, 'Aborted starting task during shutdown');
+    }
     this.startingTasks.clear();
     this.messageQueues.clear();
     this.sessionManager.destroy();
@@ -3197,7 +3210,8 @@ export class MessageBridge {
     if (this.persistentRegistry) {
       shutdowns.push(this.persistentRegistry.shutdownAll('bridge-destroy'));
     }
-    return Promise.all(shutdowns).then(() => undefined);
+    this.teardownPromise = Promise.all([...cancellations, ...shutdowns]).then(() => undefined);
+    return this.teardownPromise;
   }
 
   /**
@@ -3207,7 +3221,7 @@ export class MessageBridge {
    * teardown isn't dropped by a fast process.exit().
    */
   destroy(): void {
-    void this.teardownSync();
+    void this.beginTeardown();
   }
 
   /**
@@ -3217,7 +3231,7 @@ export class MessageBridge {
    * to call in place of {@link destroy}.
    */
   async destroyAsync(): Promise<void> {
-    await this.teardownSync();
+    await this.beginTeardown();
   }
 }
 
